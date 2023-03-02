@@ -33,7 +33,7 @@ import java.util.Map;
  * map from an backend host address to the per-node assigned scan ranges;
  * records scan range assignment for a single fragment
  */
-class FragmentScanRangeAssignment extends
+class FragmentScanRangeAssignment extends // be addr -> (scan node id -> scan range list)
         HashMap<TNetworkAddress, Map<Integer, List<TScanRangeParams>>> {
     public String toDebugString() {
         StringBuilder sb = new StringBuilder();

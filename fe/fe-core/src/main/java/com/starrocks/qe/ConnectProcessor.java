@@ -321,11 +321,13 @@ public class ConnectProcessor {
             ctx.setQueryId(UUIDUtil.genUUID());
             List<StatementBase> stmts;
             try {
+                // parse
                 stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable());
             } catch (ParsingException parsingException) {
                 throw new AnalysisException(parsingException.getMessage());
             }
 
+            // originStmt may contain multiple statements seperated by ';'
             for (int i = 0; i < stmts.size(); ++i) {
                 ctx.getState().reset();
                 if (i > 0) {

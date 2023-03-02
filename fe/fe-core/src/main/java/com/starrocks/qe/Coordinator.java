@@ -547,6 +547,7 @@ public class Coordinator {
             Set<Long> dbIds = connectContext != null ? connectContext.getCurrentSqlDbIds() : null;
 
             Set<TNetworkAddress> firstDeliveryAddresses = new HashSet<>();
+            // fragment
             for (PlanFragment fragment : fragments) {
                 CoordinatorPreprocessor.FragmentExecParams params =
                         coordinatorPreprocessor.getFragmentExecParamsMap().get(fragment.getFragmentId());
@@ -657,6 +658,7 @@ public class Coordinator {
                                         fragment.getFragmentId().asInt(), jobId);
                             }
                         }
+                        // execute async
                         futures.add(Pair.create(execState, execState.execRemoteFragmentAsync()));
                     }
                     for (Pair<BackendExecState, Future<PExecPlanFragmentResult>> pair : futures) {

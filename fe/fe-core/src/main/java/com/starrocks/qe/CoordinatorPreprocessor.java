@@ -370,8 +370,8 @@ public class CoordinatorPreprocessor {
                 queryOptions.getQuery_type() == TQueryType.LOAD ? ResourceGroupClassifier.QueryType.INSERT
                         : ResourceGroupClassifier.QueryType.SELECT);
 
-        computeScanRangeAssignment();
-        computeFragmentExecParams();
+        computeScanRangeAssignment(); // assign scan ranges to BEs via corresponding selector
+        computeFragmentExecParams(); // generate fragment instances
         traceInstance();
         computeBeInstanceNumbers();
     }
@@ -392,6 +392,7 @@ public class CoordinatorPreprocessor {
 
     @VisibleForTesting
     void prepareFragments() {
+        // populate fragmentExecParamsMap: id -> execParams
         for (PlanFragment fragment : fragments) {
             fragmentExecParamsMap.put(fragment.getFragmentId(), new FragmentExecParams(fragment));
         }
@@ -492,7 +493,7 @@ public class CoordinatorPreprocessor {
         // compute hosts *bottom up*.
         boolean isGatherOutput = fragments.get(0).getDataPartition() == DataPartition.UNPARTITIONED;
 
-        for (int i = fragments.size() - 1; i >= 0; --i) {
+        for (int i = fragments.size() - 1; i >= 0; --i) { // why in reverse order?
             PlanFragment fragment = fragments.get(i);
             FragmentExecParams params = fragmentExecParamsMap.get(fragment.getFragmentId());
 
@@ -1010,6 +1011,7 @@ public class CoordinatorPreprocessor {
     void computeScanRangeAssignment() throws Exception {
         boolean forceScheduleLocal = connectContext.getSessionVariable().isForceScheduleLocal();
         // set scan ranges/locations for scan nodes
+        // for each scan node
         for (ScanNode scanNode : scanNodes) {
             // the parameters of getScanRangeLocations may ignore, It dosn't take effect
             List<TScanRangeLocations> locations = scanNode.getScanRangeLocations(0);
@@ -1018,6 +1020,7 @@ public class CoordinatorPreprocessor {
                 continue;
             }
 
+            // find ScanRangeAssignment via fragmentID of scan node
             FragmentScanRangeAssignment assignment =
                     fragmentExecParamsMap.get(scanNode.getFragmentId()).scanRangeAssignment;
             if (scanNode instanceof SchemaScanNode) {
@@ -1039,7 +1042,7 @@ public class CoordinatorPreprocessor {
                                 hasComputeNode,
                                 forceScheduleLocal);
                 selector.computeScanRangeAssignment();
-            } else {
+            } else { // instance of what?
                 boolean hasColocate = isColocateFragment(scanNode.getFragment().getPlanRoot());
                 boolean hasBucket =
                         isBucketShuffleJoin(scanNode.getFragmentId().asInt(), scanNode.getFragment().getPlanRoot());
@@ -1062,10 +1065,12 @@ public class CoordinatorPreprocessor {
         }
     }
 
+    // generate fragment instances
     @VisibleForTesting
     void computeFragmentExecParams() throws Exception {
         // fill hosts field in fragmentExecParams
         computeFragmentHosts();
+        // where do we determine the number of instances per segment?
 
         // assign instance ids
         instanceIds.clear();
@@ -1080,12 +1085,13 @@ public class CoordinatorPreprocessor {
                         ErrorType.INTERNAL_ERROR);
             }
 
+            // instances of the same fragment share one instanceID?
             for (int j = 0; j < params.instanceExecParams.size(); ++j) {
                 // we add instance_num to query_id.lo to create a
                 // globally-unique instance id
                 TUniqueId instanceId = new TUniqueId();
                 instanceId.setHi(queryId.hi);
-                instanceId.setLo(queryId.lo + instanceIds.size() + 1);
+                instanceId.setLo(queryId.lo + instanceIds.size() + 1); // j takes no effect
                 params.instanceExecParams.get(j).instanceId = instanceId;
                 instanceIds.add(instanceId);
             }
@@ -1096,6 +1102,7 @@ public class CoordinatorPreprocessor {
 
         // MultiCastFragment params
         handleMultiCastFragmentParams();
+        // Q: what is a multicast fragment?
 
         for (FragmentExecParams params : fragmentExecParamsMap.values()) {
             if (params.fragment instanceof MultiCastPlanFragment) {
@@ -1839,6 +1846,7 @@ public class CoordinatorPreprocessor {
                 // assign this scan range to the host w/ the fewest assigned bytes
                 Long minAssignedBytes = Long.MAX_VALUE;
                 TScanRangeLocation minLocation = null;
+                // pick location with the fewest assigned slots
                 for (final TScanRangeLocation location : scanRangeLocations.getLocations()) {
                     Long assignedBytes = BackendSelector.findOrInsert(assignedBytesPerHost, location.server, 0L);
                     if (assignedBytes < minAssignedBytes) {
@@ -1849,9 +1857,10 @@ public class CoordinatorPreprocessor {
                 if (minLocation == null) {
                     throw new UserException("Scan range not found" + backendInfosString(false));
                 }
-                assignedBytesPerHost.put(minLocation.server, assignedBytesPerHost.get(minLocation.server) + 1);
+                assignedBytesPerHost.put(minLocation.server, assignedBytesPerHost.get(minLocation.server) + 1); // +1 ?
 
                 Reference<Long> backendIdRef = new Reference<>();
+                // determine host
                 TNetworkAddress execHostPort = SimpleScheduler.getHost(minLocation.backend_id,
                         scanRangeLocations.getLocations(),
                         idToBackend, backendIdRef);
@@ -1863,6 +1872,7 @@ public class CoordinatorPreprocessor {
 
                 Map<Integer, List<TScanRangeParams>> scanRanges = BackendSelector.findOrInsert(
                         assignment, execHostPort, new HashMap<>());
+                // check: fragment id or scan node id?
                 List<TScanRangeParams> scanRangeParamsList = BackendSelector.findOrInsert(
                         scanRanges, scanNode.getId().asInt(), new ArrayList<>());
                 // add scan range

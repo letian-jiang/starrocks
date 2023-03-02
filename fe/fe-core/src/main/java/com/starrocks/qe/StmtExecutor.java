@@ -349,6 +349,7 @@ public class StmtExecutor {
             resolveParseStmtForForward();
 
             // support select hint e.g. select /*+ SET_VAR(query_timeout=1) */ sleep(3);
+            // hint?
             if (parsedStmt != null) {
                 Map<String, String> optHints = null;
                 if (parsedStmt instanceof QueryStatement &&
@@ -386,6 +387,7 @@ public class StmtExecutor {
                             execPlan = StatementPlanner.plan(parsedStmt, context);
                         }
                     } else {
+                        // plan
                         execPlan = StatementPlanner.plan(parsedStmt, context);
                     }
                     execPlanBuildByNewPlanner = true;
@@ -445,6 +447,7 @@ public class StmtExecutor {
 
                         Preconditions.checkState(execPlanBuildByNewPlanner, "must use new planner");
 
+                        // handle query
                         handleQueryStmt(execPlan);
                         break;
                     } catch (RpcException e) {

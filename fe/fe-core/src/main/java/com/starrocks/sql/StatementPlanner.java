@@ -62,6 +62,7 @@ public class StatementPlanner {
         try {
             lock(dbs);
             try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
+                // analyze
                 Analyzer.analyze(stmt, session);
             }
 
@@ -86,6 +87,7 @@ public class StatementPlanner {
             if (stmt instanceof QueryStatement) {
                 QueryStatement queryStmt = (QueryStatement) stmt;
                 resultSinkType = queryStmt.hasOutFileClause() ? TResultSinkType.FILE : resultSinkType;
+                // execution plan
                 ExecPlan plan = createQueryPlan(queryStmt.getQueryRelation(), session, resultSinkType);
                 setOutfileSink(queryStmt, plan);
 
@@ -104,7 +106,7 @@ public class StatementPlanner {
     }
 
     public static ExecPlan createQueryPlan(Relation relation, ConnectContext session, TResultSinkType resultSinkType) {
-        QueryRelation query = (QueryRelation) relation;
+        QueryRelation query = (QueryRelation) relation; // relation from query statement
         List<String> colNames = query.getColumnOutputNames();
 
         //1. Build Logical plan
@@ -112,12 +114,14 @@ public class StatementPlanner {
         LogicalPlan logicalPlan;
 
         try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Transformer")) {
+            // AST -> Logical plan
             logicalPlan = new RelationTransformer(columnRefFactory, session).transformWithSelectLimit(query);
         }
 
         OptExpression optimizedPlan;
         try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Optimizer")) {
             //2. Optimize logical plan and build physical plan
+            // logical plan -> physical plan
             Optimizer optimizer = new Optimizer();
             optimizedPlan = optimizer.optimize(
                     session,
@@ -134,6 +138,7 @@ public class StatementPlanner {
              * currently only used in Spark/Flink Connector
              * Because the connector sends only simple queries, it only needs to remove the output fragment
              */
+            // physical plan -> execution plan
             return PlanFragmentBuilder.createPhysicalPlan(
                     optimizedPlan, session, logicalPlan.getOutputColumn(), columnRefFactory, colNames,
                     resultSinkType,

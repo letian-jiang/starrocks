@@ -274,7 +274,7 @@ public class HDFSBackendSelector implements BackendSelector {
             if (!computeNode.isAlive() || SimpleScheduler.isInBlacklist(computeNode.getId())) {
                 continue;
             }
-            assignedScansPerComputeNode.put(computeNode, 0L);
+            assignedScansPerComputeNode.put(computeNode, 0L); // computeNode -> number of scan ranges
             hostToBackends.put(computeNode.getHost(), computeNode);
         }
         if (hostToBackends.isEmpty()) {
@@ -324,6 +324,7 @@ public class HDFSBackendSelector implements BackendSelector {
         // assign scan ranges.
         for (int i = 0; i < remoteScanRangeLocations.size(); ++i) {
             TScanRangeLocations scanRangeLocations = remoteScanRangeLocations.get(i);
+            // how to get multiple candidates form a hash ring?
             List<ComputeNode> backends = hashRing.get(scanRangeLocations, kCandidateNumber);
             ComputeNode node = selectLeastScanBytesComputeNode(backends, maxImbalanceBytes);
             if (node == null) {
