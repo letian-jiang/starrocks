@@ -743,7 +743,7 @@ public class StmtExecutor {
         StatementBase queryStmt = parsedStmt;
         List<PlanFragment> fragments = execPlan.getFragments();
         List<ScanNode> scanNodes = execPlan.getScanNodes();
-        TDescriptorTable descTable = execPlan.getDescTbl().toThrift();
+        TDescriptorTable descTable = execPlan.getDescTbl().toThrift(); // a list of tuple/slot descriptor
         List<String> colNames = execPlan.getColNames();
         List<Expr> outputExprs = execPlan.getOutputExprs();
 

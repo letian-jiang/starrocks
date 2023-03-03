@@ -493,7 +493,7 @@ public class CoordinatorPreprocessor {
         // compute hosts *bottom up*.
         boolean isGatherOutput = fragments.get(0).getDataPartition() == DataPartition.UNPARTITIONED;
 
-        for (int i = fragments.size() - 1; i >= 0; --i) { // why in reverse order?
+        for (int i = fragments.size() - 1; i >= 0; --i) { // producer -> consumer (fragment #0 has result sink)
             PlanFragment fragment = fragments.get(i);
             FragmentExecParams params = fragmentExecParamsMap.get(fragment.getFragmentId());
 
@@ -510,6 +510,7 @@ public class CoordinatorPreprocessor {
                 continue;
             }
 
+            // the output of limit or result sink node can not be partitioned.
             if (fragment.getDataPartition() == DataPartition.UNPARTITIONED) {
                 Reference<Long> backendIdRef = new Reference<>();
                 TNetworkAddress execHostport;

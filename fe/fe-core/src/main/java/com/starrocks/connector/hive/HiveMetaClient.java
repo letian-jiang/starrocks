@@ -183,6 +183,7 @@ public class HiveMetaClient {
     }
 
     public List<String> getPartitionKeys(String dbName, String tableName) {
+        // list partitions
         try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("HMS.listPartitionNames")) {
             return callRPC("listPartitionNames", String.format("Failed to get partitionKeys on [%s.%s]", dbName, tableName),
                     dbName, tableName, (short) -1);
