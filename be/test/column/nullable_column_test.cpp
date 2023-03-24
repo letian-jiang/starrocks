@@ -375,4 +375,13 @@ PARALLEL_TEST(NullableColumnTest, test_replicate) {
     ASSERT_EQ(4, c2->get(6).get_int32());
 }
 
+PARALLEL_TEST(NullableColumnTest, test_debug_string) {
+    auto column = NullableColumn::create(Int32Column::create(), NullColumn::create());
+    ASSERT_EQ("[]", column->debug_string());
+    column->append_datum((int32_t)1);
+    column->append_datum({});
+    column->append_datum((int32_t)4);
+    ASSERT_EQ("[1, NULL, 4]", column->debug_string());
+}
+
 } // namespace starrocks

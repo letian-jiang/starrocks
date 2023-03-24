@@ -296,11 +296,11 @@ public:
         std::stringstream ss;
         ss << "[";
         size_t size = _data_column->size();
-        for (size_t i = 0; i < size - 1; ++i) {
-            ss << debug_item(i) << ", ";
-        }
         if (size > 0) {
-            ss << debug_item(size - 1);
+            ss << debug_item(0);
+            for (size_t i = 1; i < size; i++) {
+                ss << ", " << debug_item(i);
+            }
         }
         ss << "]";
         return ss.str();
