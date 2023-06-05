@@ -276,7 +276,7 @@ set(EXEC_FILES
     stream/aggregate/agg_group_state.cpp
     stream/aggregate/stream_aggregator.cpp
     stream/aggregate/stream_aggregate_operator.cpp
-    stream/stream_aggregate_node.cpp)
+    stream/stream_aggregate_node.cpp pipeline/sink/table_function_table_sink_operator.cpp pipeline/sink/table_function_table_sink_operator.h)
 
 add_library(Exec STATIC
     ${EXEC_FILES}

@@ -263,6 +263,7 @@ statement
     | exportStatement
     | cancelExportStatement
     | showExportStatement
+    | unloadStatement
 
     // Plugin Statement
     | installPluginStatement
@@ -942,9 +943,20 @@ partitionRenameClause
 
 // ------------------------------------------- DML Statement -----------------------------------------------------------
 
+//insertStatement
+//    : explainDesc? INSERT (INTO | OVERWRITE) (qualifiedName | (TABLE propertyList)) partitionNames?
+//        (WITH LABEL label=identifier)? columnAliases?
+//        (queryStatement | (VALUES expressionsWithDefault (',' expressionsWithDefault)*))
+//    ;
+
 insertStatement
     : explainDesc? INSERT (INTO | OVERWRITE) qualifiedName partitionNames?
         (WITH LABEL label=identifier)? columnAliases?
+        (queryStatement | (VALUES expressionsWithDefault (',' expressionsWithDefault)*))
+    ;
+
+unloadStatement
+    : INSERT INTO TABLE propertyList
         (queryStatement | (VALUES expressionsWithDefault (',' expressionsWithDefault)*))
     ;
 

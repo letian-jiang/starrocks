@@ -384,6 +384,7 @@ import com.starrocks.sql.ast.UninstallPluginStmt;
 import com.starrocks.sql.ast.UnionRelation;
 import com.starrocks.sql.ast.UnitBoundary;
 import com.starrocks.sql.ast.UnitIdentifier;
+import com.starrocks.sql.ast.UnloadStmt;
 import com.starrocks.sql.ast.UnsupportedStmt;
 import com.starrocks.sql.ast.UpdateStmt;
 import com.starrocks.sql.ast.UseCatalogStmt;
@@ -1829,6 +1830,29 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 context.label == null ? null : ((Identifier) visit(context.label)).getValue(),
                 getColumnNames(context.columnAliases()), queryStatement, context.OVERWRITE() != null,
                 createPos(context));
+    }
+
+    @Override
+    public ParseNode visitUnloadStatement(StarRocksParser.UnloadStatementContext context) {
+        Map<String, String> tableProperties = getPropertyList(context.propertyList());
+
+        QueryStatement queryStatement;
+        if (context.VALUES() != null) {
+            List<ValueList> rowValues = visit(context.expressionsWithDefault(), ValueList.class);
+            List<List<Expr>> rows = rowValues.stream().map(ValueList::getRow).collect(toList());
+
+            List<String> colNames = new ArrayList<>();
+            for (int i = 0; i < rows.get(0).size(); ++i) {
+                colNames.add("column_" + i);
+            }
+
+            queryStatement = new QueryStatement(new ValuesRelation(rows, colNames,
+                    createPos(context.VALUES().getSymbol(), context.stop)));
+        } else {
+            queryStatement = (QueryStatement) visit(context.queryStatement());
+        }
+
+        return new UnloadStmt(tableProperties, queryStatement, createPos(context));
     }
 
     @Override

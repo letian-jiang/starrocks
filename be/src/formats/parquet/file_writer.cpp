@@ -434,8 +434,10 @@ Status AsyncFileWriter::_flush_row_group() {
 
     bool ok = _executor_pool->try_offer([&]() {
         SCOPED_TIMER(_io_timer);
+        LOG(INFO) << "AsyncFileWriter::_flush_row_group";
         if (_chunk_writer != nullptr) {
             _chunk_writer->close();
+            LOG(INFO) << "AsyncFileWriter::_flush_row_group done";
             _chunk_writer = nullptr;
         }
         {
@@ -467,10 +469,12 @@ Status AsyncFileWriter::close(RuntimeState* state,
             auto lock = std::unique_lock(_m);
             _cv.wait(lock, [&] { return !_rg_writer_closing; });
         }
+        LOG(INFO) << "AsyncFileWriter::close";
         _writer->Close();
         _chunk_writer = nullptr;
         _file_metadata = _writer->metadata();
         auto st = _outstream->Close();
+        LOG(INFO) << "AsyncFileWriter::close done";
         if (!st.ok()) {
             return Status::InternalError("Close outstream failed");
         }

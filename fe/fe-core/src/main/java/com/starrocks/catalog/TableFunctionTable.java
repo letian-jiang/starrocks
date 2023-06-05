@@ -77,6 +77,13 @@ public class TableFunctionTable extends Table {
         super.setNewFullSchema(getFileSchema());
     }
 
+    public TableFunctionTable(String path, String format, List<Column> columns) {
+        super(TableType.TABLE_FUNCTION);
+        this.path = path;
+        this.format = format;
+        super.setNewFullSchema(columns);
+    }
+
     public List<TBrokerFileStatus> fileList() {
         return fileStatuses;
     }

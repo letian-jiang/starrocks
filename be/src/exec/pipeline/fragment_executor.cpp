@@ -36,6 +36,7 @@
 #include "exec/pipeline/sink/export_sink_operator.h"
 #include "exec/pipeline/sink/file_sink_operator.h"
 #include "exec/pipeline/sink/iceberg_table_sink_operator.h"
+#include "exec/pipeline/sink/table_function_table_sink_operator.h"
 #include "exec/pipeline/sink/memory_scratch_sink_operator.h"
 #include "exec/pipeline/sink/mysql_table_sink_operator.h"
 #include "exec/pipeline/stream_pipeline_driver.h"
@@ -51,6 +52,7 @@
 #include "runtime/exec_env.h"
 #include "runtime/export_sink.h"
 #include "runtime/iceberg_table_sink.h"
+#include "runtime/table_function_table_sink.h"
 #include "runtime/memory_scratch_sink.h"
 #include "runtime/multi_cast_data_stream_sink.h"
 #include "runtime/mysql_table_sink.h"
@@ -930,10 +932,26 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
                 fragment_ctx->pipelines().back()->get_op_factories().emplace_back(std::move(iceberg_table_sink_op));
             }
         } else {
+            // what for?
             context->maybe_interpolate_local_key_partition_exchange_for_sink(runtime_state, iceberg_table_sink_op,
                                                                              partition_expr_ctxs, source_operator_dop,
                                                                              desired_iceberg_sink_dop);
         }
+    } else if (typeid(*datasink) == typeid(starrocks::TableFunctionTableSink)) {
+//        auto* table_function_table_sink = down_cast<starrocks::TableFunctionTableSink*>(datasink.get());
+        DCHECK(thrift_sink.table_function_table_sink.__isset.path);
+        DCHECK(thrift_sink.table_function_table_sink.__isset.file_format);
+        DCHECK(thrift_sink.table_function_table_sink.__isset.compression_type);
+
+        auto op = std::make_shared<TableFunctionTableSinkOperatorFactory>(
+                context->next_operator_id(),
+                thrift_sink.table_function_table_sink.path,
+                thrift_sink.table_function_table_sink.file_format,
+                thrift_sink.table_function_table_sink.compression_type,
+                output_exprs,
+                fragment_ctx
+                );
+        fragment_ctx->pipelines().back()->get_op_factories().emplace_back(std::move(op));
     }
 
     return Status::OK();

@@ -52,6 +52,7 @@ import com.starrocks.catalog.ResourceGroup;
 import com.starrocks.catalog.ResourceGroupClassifier;
 import com.starrocks.catalog.ScalarType;
 import com.starrocks.catalog.Table;
+import com.starrocks.catalog.TableFunctionTable;
 import com.starrocks.catalog.system.SystemTable;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
@@ -127,6 +128,7 @@ import com.starrocks.sql.ast.SetWarehouseStmt;
 import com.starrocks.sql.ast.ShowStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.SystemVariable;
+import com.starrocks.sql.ast.UnloadStmt;
 import com.starrocks.sql.ast.UnsupportedStmt;
 import com.starrocks.sql.ast.UpdateStmt;
 import com.starrocks.sql.ast.UseCatalogStmt;
@@ -154,7 +156,6 @@ import com.starrocks.thrift.TLoadJobType;
 import com.starrocks.thrift.TQueryOptions;
 import com.starrocks.thrift.TQueryType;
 import com.starrocks.thrift.TResultBatch;
-import com.starrocks.thrift.TSinkCommitInfo;
 import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TWorkGroup;
 import com.starrocks.transaction.InsertTxnCommitAttachment;
@@ -1335,6 +1336,12 @@ public class StmtExecutor {
         manager.executeJob(context, this, job);
     }
 
+    public void handleUnloadStmt(UnloadStmt unloadStmt) throws Exception {
+        LOG.info("unload statement path = " + unloadStmt.getPath());
+        LOG.info("unload statement format = " + unloadStmt.getFormat());
+        LOG.info("unload statement query = " + unloadStmt.getQueryStatement().getOrigStmt());
+    }
+
     public void handleDMLStmt(ExecPlan execPlan, DmlStmt stmt) throws Exception {
         if (stmt.isExplain()) {
             handleExplainStmt(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.INSERT));
@@ -1358,12 +1365,19 @@ public class StmtExecutor {
             return;
         }
 
-        MetaUtils.normalizationTableName(context, stmt.getTableName());
-        String catalogName = stmt.getTableName().getCatalog();
-        String dbName = stmt.getTableName().getDb();
-        String tableName = stmt.getTableName().getTbl();
-        Database database = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(catalogName, dbName);
-        Table targetTable = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(catalogName, dbName, tableName);
+        Table targetTable;
+        Database database = null;
+        if (parsedStmt instanceof UnloadStmt) {
+            handleUnloadStmt((UnloadStmt) parsedStmt);
+            targetTable = ((UnloadStmt) parsedStmt).getTargetTable();
+        } else {
+            MetaUtils.normalizationTableName(context, stmt.getTableName());
+            String catalogName = stmt.getTableName().getCatalog();
+            String dbName = stmt.getTableName().getDb();
+            String tableName = stmt.getTableName().getTbl();
+            database = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(catalogName, dbName);
+            targetTable = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(catalogName, dbName, tableName);
+        }
 
         if (parsedStmt instanceof InsertStmt && ((InsertStmt) parsedStmt).isOverwrite() &&
                 !((InsertStmt) parsedStmt).hasOverwriteJob() &&
@@ -1380,6 +1394,8 @@ public class StmtExecutor {
             label = "update_" + label;
         } else if (stmt instanceof DeleteStmt) {
             label = "delete_" + label;
+        } else if (stmt instanceof UnloadStmt) {
+            label = "unload_" + label;
         } else {
             throw unsupportedException(
                     "Unsupported dml statement " + parsedStmt.getClass().getSimpleName());
@@ -1408,7 +1424,8 @@ public class StmtExecutor {
                                     sourceType,
                                     context.getSessionVariable().getQueryTimeoutS(),
                                     authenticateParams);
-        } else if (targetTable instanceof SystemTable || targetTable instanceof IcebergTable) {
+        } else if (targetTable instanceof SystemTable || targetTable instanceof IcebergTable
+                || targetTable instanceof TableFunctionTable) {
             // schema table and iceberg table does not need txn
         } else {
             transactionId = GlobalStateMgr.getCurrentGlobalTransactionMgr().beginTransaction(
@@ -1478,7 +1495,7 @@ public class StmtExecutor {
                 type = TLoadJobType.INSERT_VALUES;
             }
 
-            if (!targetTable.isIcebergTable()) {
+            if (!targetTable.isIcebergTable() && !(targetTable instanceof TableFunctionTable)) {
                 jobId = context.getGlobalStateMgr().getLoadMgr().registerLoadJob(
                         label,
                         database.getFullName(),
@@ -1614,18 +1631,6 @@ public class StmtExecutor {
             } else if (targetTable instanceof SystemTable) {
                 // schema table does not need txn
                 txnStatus = TransactionStatus.VISIBLE;
-            } else if (targetTable instanceof IcebergTable) {
-                // TODO(stephen): support abort interface and delete data files when aborting.
-                List<TSinkCommitInfo> commitInfos = coord.getSinkCommitInfos();
-                if (stmt instanceof InsertStmt && ((InsertStmt) stmt).isOverwrite()) {
-                    for (TSinkCommitInfo commitInfo : commitInfos) {
-                        commitInfo.setIs_overwrite(true);
-                    }
-                }
-
-                context.getGlobalStateMgr().getMetadataMgr().finishSink(catalogName, dbName, tableName, commitInfos);
-                txnStatus = TransactionStatus.VISIBLE;
-                label = "FAKE_ICEBERG_SINK_LABEL";
             } else {
                 if (GlobalStateMgr.getCurrentGlobalTransactionMgr().commitAndPublishTransaction(
                         database,
@@ -1712,7 +1717,7 @@ public class StmtExecutor {
                 } catch (Exception abortTxnException) {
                     LOG.warn("errors when cancel insert load job {}", jobId);
                 }
-            } else {
+            } else if (txnState != null) {
                 StatisticUtils.triggerCollectionOnFirstLoad(txnState, database, targetTable, true,
                         StatisticUtils.createCounteredListener(1, null));
             }

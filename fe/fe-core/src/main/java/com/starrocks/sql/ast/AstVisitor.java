@@ -525,6 +525,10 @@ public abstract class AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
+    public R visitUnloadStatement(UnloadStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
     public R visitCancelLoadStatement(CancelLoadStmt statement, C context) {
         return visitStatement(statement, context);
     }

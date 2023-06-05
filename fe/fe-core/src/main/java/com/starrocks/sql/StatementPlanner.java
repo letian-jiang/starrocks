@@ -31,6 +31,7 @@ import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.UnloadStmt;
 import com.starrocks.sql.ast.UpdateStmt;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.Optimizer;
@@ -94,13 +95,17 @@ public class StatementPlanner {
                 return new UpdatePlanner().plan((UpdateStmt) stmt, session);
             } else if (stmt instanceof DeleteStmt) {
                 return new DeletePlanner().plan((DeleteStmt) stmt, session);
+            } else if (stmt instanceof UnloadStmt) {
+                return new UnloadPlanner().plan((UnloadStmt) stmt, session);
+            } else {
+                // TODO: add planner for create execution plan
+                // throw new SemanticException("unsupported statement for analyzer");
             }
         } finally {
             if (needWholePhaseLock) {
                 unLock(dbs);
             }
         }
-
         return null;
     }
 

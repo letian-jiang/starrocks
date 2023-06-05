@@ -62,6 +62,7 @@ std::string RollingAsyncParquetWriter::_new_file_location() {
     _file_cnt += 1;
     _outfile_location = _partition_location + fmt::format("{}_{}_{}.parquet", print_id(_state->fragment_instance_id()),
                                                           _driver_id, _file_cnt);
+    LOG(INFO) << "new file location: " << _outfile_location;
     return _outfile_location;
 }
 

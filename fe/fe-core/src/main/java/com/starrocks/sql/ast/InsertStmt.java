@@ -48,7 +48,8 @@ import java.util.Map;
 public class InsertStmt extends DmlStmt {
     public static final String STREAMING = "STREAMING";
 
-    private final TableName tblName;
+    private final TableName tblName; // used for qualified table
+    private final Map<String, String> tblProperties; // used for unnamed table (aka. TABLE(...))
     private PartitionNames targetPartitionNames;
     // parsed from targetPartitionNames.
     // if targetPartitionNames is not set, add all formal partitions' id of the table into it
@@ -88,6 +89,7 @@ public class InsertStmt extends DmlStmt {
                       QueryStatement queryStatement, boolean isOverwrite, NodePosition pos) {
         super(pos);
         this.tblName = tblName;
+        this.tblProperties = null;
         this.targetPartitionNames = targetPartitionNames;
         this.label = label;
         this.queryStatement = queryStatement;
@@ -100,10 +102,23 @@ public class InsertStmt extends DmlStmt {
         // CTAS claus hasn't explicit insert stmt, we use the pos of queryStmt to express the location of insertStmt
         super(queryStatement.getPos());
         this.tblName = name;
+        this.tblProperties = null;
         this.targetPartitionNames = null;
         this.targetColumnNames = null;
         this.queryStatement = queryStatement;
         this.forCTAS = true;
+    }
+
+    // Ctor for INSERT INTO TABLE(...)
+    public InsertStmt(Map<String, String> tableProperties, String label, QueryStatement queryStatement, NodePosition pos) {
+        super(pos);
+        this.tblName = null;
+        this.tblProperties = tableProperties;
+        this.targetPartitionNames = null;
+        this.label = label;
+        this.targetColumnNames = null;
+        this.isOverwrite = false;
+        this.queryStatement = queryStatement;
     }
 
     public Table getTargetTable() {

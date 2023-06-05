@@ -91,7 +91,7 @@ set(RUNTIME_FILES
 set(RUNTIME_FILES ${RUNTIME_FILES}
     mysql_table_writer.cpp
     mysql_table_sink.cpp
-)
+        table_function_table_sink.cpp table_function_table_sink.h)
 
 add_library(Runtime STATIC
     ${RUNTIME_FILES}

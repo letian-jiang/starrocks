@@ -131,6 +131,7 @@ import com.starrocks.sql.ast.SubmitTaskStmt;
 import com.starrocks.sql.ast.SuspendWarehouseStmt;
 import com.starrocks.sql.ast.TruncateTableStmt;
 import com.starrocks.sql.ast.UninstallPluginStmt;
+import com.starrocks.sql.ast.UnloadStmt;
 import com.starrocks.sql.ast.UpdateStmt;
 import com.starrocks.sql.ast.UseCatalogStmt;
 import com.starrocks.sql.ast.UseDbStmt;
@@ -651,6 +652,12 @@ public class Analyzer {
         @Override
         public Void visitLoadStatement(LoadStmt statement, ConnectContext context) {
             LoadStmtAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitUnloadStatement(UnloadStmt statement, ConnectContext context) {
+            UnloadStmtAnalyzer.analyze(statement, context);
             return null;
         }
 
