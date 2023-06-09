@@ -38,6 +38,8 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.Analyzer;
 import com.starrocks.analysis.TupleDescriptor;
+import com.starrocks.catalog.IcebergTable;
+import com.starrocks.catalog.Table;
 import com.starrocks.catalog.system.SystemTable;
 import com.starrocks.common.UserException;
 import com.starrocks.qe.ConnectContext;
@@ -58,6 +60,7 @@ import java.util.List;
  * Full scan of an SCHEMA table.
  */
 public class SchemaScanNode extends ScanNode {
+    private String catalogName;
     private final String tableName;
     private String schemaDb;
     private String schemaTable;
@@ -138,6 +141,12 @@ public class SchemaScanNode extends ScanNode {
      */
     public SchemaScanNode(PlanNodeId id, TupleDescriptor desc) {
         super(id, desc, "SCAN SCHEMA");
+        Table table = desc.getTable();
+        if (table instanceof SystemTable) {
+            this.catalogName = ((SystemTable) table).getCatalogName();
+        } else {
+            this.catalogName = "default_catalog";
+        }
         this.tableName = desc.getTable().getName();
     }
 
@@ -155,6 +164,7 @@ public class SchemaScanNode extends ScanNode {
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.SCHEMA_SCAN_NODE;
         msg.schema_scan_node = new TSchemaScanNode(desc.getId().asInt(), tableName);
+        msg.schema_scan_node.setCatalog_name(catalogName);
         if (schemaDb != null) {
             msg.schema_scan_node.setDb(schemaDb);
         } else {

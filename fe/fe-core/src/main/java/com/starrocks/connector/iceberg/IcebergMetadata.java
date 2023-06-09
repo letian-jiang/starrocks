@@ -23,6 +23,7 @@ import com.starrocks.catalog.Database;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.catalog.Table;
+import com.starrocks.catalog.system.information.InfoSchemaDb;
 import com.starrocks.common.AlreadyExistsException;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.MetaNotFoundException;
@@ -95,16 +96,20 @@ public class IcebergMetadata implements ConnectorMetadata {
     private final Map<TableIdentifier, Table> tables = new ConcurrentHashMap<>();
     private final Map<String, Database> databases = new ConcurrentHashMap<>();
     private final Map<IcebergFilter, List<FileScanTask>> tasks = new ConcurrentHashMap<>();
+    private final InfoSchemaDb infoSchemaDb;
 
     public IcebergMetadata(String catalogName, IcebergCatalog icebergCatalog) {
         this.catalogName = catalogName;
         this.icebergCatalog = icebergCatalog;
         new IcebergMetricsReporter().setThreadLocalReporter();
+        this.infoSchemaDb = new InfoSchemaDb();
     }
 
     @Override
     public List<String> listDbNames() {
-        return icebergCatalog.listAllDatabases();
+        List<String> names = icebergCatalog.listAllDatabases();
+        names.add("information_schema");
+        return names;
     }
 
     @Override
@@ -128,6 +133,9 @@ public class IcebergMetadata implements ConnectorMetadata {
 
     @Override
     public Database getDb(String dbName) {
+        if ((InfoSchemaDb.isInfoSchemaDb(dbName))) {
+            return infoSchemaDb;
+        }
         if (databases.containsKey(dbName)) {
             return databases.get(dbName);
         }
@@ -138,6 +146,9 @@ public class IcebergMetadata implements ConnectorMetadata {
 
     @Override
     public List<String> listTableNames(String dbName) {
+        if ((InfoSchemaDb.isInfoSchemaDb(dbName))) {
+            return infoSchemaDb.getTables().stream().map(Table::getName).collect(Collectors.toList());
+        }
         return icebergCatalog.listTables(dbName);
     }
 
@@ -166,6 +177,10 @@ public class IcebergMetadata implements ConnectorMetadata {
 
     @Override
     public Table getTable(String dbName, String tblName) {
+        if (InfoSchemaDb.isInfoSchemaDb(dbName)) {
+            return infoSchemaDb.getTable(tblName);
+        }
+
         TableIdentifier identifier = TableIdentifier.of(dbName, tblName);
         if (tables.containsKey(identifier)) {
             return tables.get(identifier);
