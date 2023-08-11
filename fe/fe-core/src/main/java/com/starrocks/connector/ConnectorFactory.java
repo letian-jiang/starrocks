@@ -39,8 +39,8 @@ public class ConnectorFactory {
         Class<Connector> connectorClass = connectorType.getConnectorClass();
         Class<ConnectorConfig> ctConfigClass = connectorType.getConfigClass();
         try {
-            Constructor connectorConstructor = connectorClass.getDeclaredConstructor(ConnectorContext.class);
-            Connector connector = (Connector) connectorConstructor.newInstance(new Object[] {context});
+            Constructor<Connector> connectorConstructor = connectorClass.getDeclaredConstructor(ConnectorContext.class);
+            Connector connector = connectorConstructor.newInstance(context);
 
             // init config, then load config
             if (null != connector && null != ctConfigClass) {

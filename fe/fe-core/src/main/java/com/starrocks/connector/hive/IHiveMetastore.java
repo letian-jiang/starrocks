@@ -39,6 +39,8 @@ public interface IHiveMetastore {
 
     Table getTable(String dbName, String tableName);
 
+    org.apache.hadoop.hive.metastore.api.Table getHmsTable(String dbName, String tableName);
+
     List<String> getPartitionKeysByValue(String dbName, String tableName, List<Optional<String>> partitionValues);
 
     default Map<HivePartitionName, Partition> getCachedPartitions(List<HivePartitionName> hivePartitionNames) {

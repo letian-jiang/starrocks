@@ -268,6 +268,11 @@ public class CachingHiveMetastore implements IHiveMetastore {
         return get(tableCache, HiveTableName.of(dbName, tableName));
     }
 
+    public org.apache.hadoop.hive.metastore.api.Table getHmsTable(String dbName, String tableName) {
+        // pass-through
+        return metastore.getHmsTable(dbName, tableName);
+    }
+
     private Table loadTable(HiveTableName hiveTableName) {
         return metastore.getTable(hiveTableName.getDatabaseName(), hiveTableName.getTableName());
     }

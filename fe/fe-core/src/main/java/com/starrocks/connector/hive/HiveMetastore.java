@@ -103,6 +103,15 @@ public class HiveMetastore implements IHiveMetastore {
         }
     }
 
+    // return raw table
+    public org.apache.hadoop.hive.metastore.api.Table getHmsTable(String dbName, String tableName) {
+        org.apache.hadoop.hive.metastore.api.Table table = client.getTable(dbName, tableName);
+        if (table.getSd() == null) {
+            throw new StarRocksConnectorException("Table is missing storage descriptor");
+        }
+        return table;
+    }
+
     @Override
     public List<String> getPartitionKeysByValue(String dbName, String tableName, List<Optional<String>> partitionValues) {
         if (partitionValues.isEmpty()) {
