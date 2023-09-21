@@ -205,8 +205,15 @@ public class MetadataMgr {
     }
 
     public Database getDb(String catalogName, String dbName) {
+        if (dbName.contains(".")) {
+            String[] parts = dbName.split("\\.", 2); // at most 2 parts
+            dbName = parts[1];
+        }
         Optional<ConnectorMetadata> connectorMetadata = getOptionalMetadata(catalogName);
-        Database db = connectorMetadata.map(metadata -> metadata.getDb(dbName)).orElse(null);
+        Database db = null;
+        if (connectorMetadata.isPresent()) {
+            db = connectorMetadata.get().getDb(dbName);
+        }
         // set catalog name if external catalog
         if (db != null && CatalogMgr.isExternalCatalog(catalogName)) {
             db.setCatalogName(catalogName);
@@ -283,8 +290,15 @@ public class MetadataMgr {
     }
 
     public Table getTable(String catalogName, String dbName, String tblName) {
+        if (dbName.contains(".")) {
+            String[] parts = dbName.split("\\.", 2); // at most 2 parts
+            dbName = parts[1];
+        }
         Optional<ConnectorMetadata> connectorMetadata = getOptionalMetadata(catalogName);
-        Table connectorTable = connectorMetadata.map(metadata -> metadata.getTable(dbName, tblName)).orElse(null);
+        Table connectorTable = null;
+        if (connectorMetadata.isPresent()) {
+            connectorTable = connectorMetadata.get().getTable(dbName, tblName);
+        }
         if (connectorTable != null) {
             // Load meta information from ConnectorTblMetaInfoMgr for each external table.
             connectorTblMetaInfoMgr.setTableInfoForConnectorTable(catalogName, dbName, connectorTable);

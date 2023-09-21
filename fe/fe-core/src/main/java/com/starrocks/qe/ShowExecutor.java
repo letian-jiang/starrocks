@@ -909,6 +909,7 @@ public class ShowExecutor {
                 continue;
             }
 
+            // dbNameSet.add(catalogName + "." + dbName);
             dbNameSet.add(dbName);
         }
 
@@ -928,6 +929,10 @@ public class ShowExecutor {
             catalogName = connectContext.getCurrentCatalog();
         }
         String dbName = showTableStmt.getDb();
+        if (dbName.contains(".")) {
+            String[] parts = dbName.split("\\.", 2); // at most 2 parts
+            dbName = parts[1];
+        }
         Database db = metadataMgr.getDb(catalogName, dbName);
 
         PatternMatcher matcher = null;
@@ -1139,6 +1144,10 @@ public class ShowExecutor {
         String dbName = tbl.getDb();
         String tableName = tbl.getTbl();
         MetadataMgr metadataMgr = GlobalStateMgr.getCurrentState().getMetadataMgr();
+        if (dbName.contains(".")) {
+            String[] parts = dbName.split("\\.", 2); // at most 2 parts
+            dbName = parts[1];
+        }
         Database db = metadataMgr.getDb(catalogName, dbName);
         if (db == null) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_BAD_DB_ERROR, dbName);

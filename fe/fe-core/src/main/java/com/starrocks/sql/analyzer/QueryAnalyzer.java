@@ -907,6 +907,10 @@ public class QueryAnalyzer {
             MetaUtils.normalizationTableName(session, tableName);
             String catalogName = tableName.getCatalog();
             String dbName = tableName.getDb();
+            if (dbName.contains(".")) {
+                String[] parts = dbName.split("\\.", 2); // at most 2 parts
+                dbName = parts[1];
+            }
             String tbName = tableName.getTbl();
             if (Strings.isNullOrEmpty(dbName)) {
                 ErrorReport.reportAnalysisException(ErrorCode.ERR_NO_DB_ERROR);
