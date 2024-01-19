@@ -548,6 +548,11 @@ Status ExchangeSinkOperator::push_chunk(RuntimeState* state, const ChunkPtr& chu
             }
         }
 
+        // TODO: handle at least 10MB between two consectuive scales
+        if (_buffer->is_half_full()) {
+            // increment number of recrs
+        }
+
         if (local_channels.empty()) {
             local_channels = _channels;
         }

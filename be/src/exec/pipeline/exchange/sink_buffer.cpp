@@ -137,6 +137,17 @@ bool SinkBuffer::is_full() const {
     return is_full;
 }
 
+
+bool SinkBuffer::is_half_full() const {
+    size_t max_buffer_size = config::pipeline_sink_buffer_size * _buffers.size();
+    size_t buffer_size = 0;
+    for (auto& [_, buffer] : _buffers) {
+        buffer_size += buffer.size();
+    }
+    double ratio = (double) buffer_size > max_buffer_size;
+    return ratio > 0.5;
+}
+
 void SinkBuffer::set_finishing() {
     _pending_timestamp = MonotonicNanos();
 }

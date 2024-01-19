@@ -85,6 +85,7 @@ public:
 
     Status add_request(TransmitChunkInfo& request);
     bool is_full() const;
+    bool is_half_full() const;
 
     void set_finishing();
     bool is_finished() const;
