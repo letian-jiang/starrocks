@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -105,6 +106,131 @@ private:
     const std::string _file_name_suffix;
     int _index = 0;
     std::map<std::string, int> _partition2index;
+};
+
+class TaskExecutor {
+public:
+    using Token = uint64_t;
+
+    class TaskQueue {
+    public:
+        using Task = std::function<void()>;
+
+        std::optional<Task> pop() {
+            Token token;
+            Task task;
+            {
+                std::lock_guard lock(_mu);
+                if (_ready_task_tokens.empty()) {
+                    return std::nullopt;
+                }
+                token = _ready_task_tokens.front();
+                _ready_task_tokens.pop();
+                task = _token2task[token];
+            }
+
+            return [&, task, token]() {
+                task();
+                LOG(INFO) << "TaskQueue: task of token " << token << " is finished";
+                // clean up once task is done
+                {
+                    std::lock_guard lock(_mu);
+                    for (Token downstream_token : _graph[token]) {
+                        _reversed_graph[downstream_token].erase(token);
+                        if (_reversed_graph[downstream_token].empty()) {
+                            LOG(INFO) << "TaskQueue: task of token " << downstream_token << " is ready";
+                            _ready_task_tokens.push(downstream_token);
+                        }
+                    }
+                    _graph.erase(token);
+                    _token2task.erase(token);
+                }
+            };
+        }
+
+        void push(Task task, Token token, std::set<Token> upstream_tokens) {
+            std::lock_guard lock(_mu);
+            _token2task[token] = std::move(task);
+            if (upstream_tokens.empty()) {
+                LOG(INFO) << "TaskQueue: task of token " << token << " is ready";
+                _ready_task_tokens.push(token);
+                return;
+            }
+
+            // remove in-existent task tokens (which may have been done)
+            std::erase_if(upstream_tokens, [&](auto t) { return !_token2task.contains(t); });
+            for (Token upstream_token : upstream_tokens) {
+                _graph[upstream_token].insert(token);
+            }
+            _reversed_graph[token] = std::move(upstream_tokens);
+        }
+
+    private:
+        std::mutex _mu;
+        std::map<Token, std::set<Token>> _graph;          // task -> downstream tasks
+        std::map<Token, std::set<Token>> _reversed_graph; // task -> upstream tasks
+        std::map<Token, Task> _token2task;
+        std::queue<Token> _ready_task_tokens;
+    };
+
+    TaskExecutor(int num_threads) : _done(false) {
+        for (int i = 0; i < num_threads; i++) {
+            _threads.push_back(std::thread(&TaskExecutor::work_function, this));
+        }
+    }
+
+    ~TaskExecutor() {
+        _done.store(true);
+        for (auto& t : _threads) {
+            t.join();
+        }
+    }
+
+    void work_function() {
+        while (!_done) {
+            // fetch task
+            auto maybe_task = _task_queue.pop();
+            if (!maybe_task.has_value()) {
+                std::this_thread::yield();
+                continue;
+            }
+
+            auto task = maybe_task.value();
+            task();
+        }
+    }
+
+    template <typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    [[nodiscard]] std::pair<Token, std::future<R>> submit(F&& task) {
+        return submit(std::move(task), {});
+    }
+
+    template <typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    [[nodiscard]] std::pair<Token, std::future<R>> submit(F&& task, std::set<Token> upstream_tasks) {
+        const std::shared_ptr<std::promise<R>> task_promise = std::make_shared<std::promise<R>>();
+        Token token = _next_token.fetch_add(1);
+        _task_queue.push(
+                [task = std::move(task), task_promise]() {
+                    if constexpr (std::is_void_v<R>) {
+                        task();
+                        task_promise->set_value();
+                    } else {
+                        task_promise->set_value(task());
+                    }
+                },
+                token, std::move(upstream_tasks));
+
+        return std::make_pair(token, task_promise->get_future());
+    }
+
+private:
+    // thread-safe DAG-aware task queue
+    TaskQueue _task_queue;
+    std::atomic<bool> _done;
+    std::atomic<uint64_t> _next_token;
+
+    // thread pool
+    std::vector<std::thread> _threads;
 };
 
 } // namespace starrocks::connector
