@@ -193,6 +193,8 @@ public:
     virtual StatusOr<std::unique_ptr<WritableFile>> new_writable_file(const WritableFileOptions& opts,
                                                                       const std::string& fname) = 0;
 
+    virtual StatusOr<std::unique_ptr<DirectOutputStream>> new_direct_output_stream(const std::string& path) = 0;
+
     // Returns OK if the path exists.
     //         NotFound if the named file does not exist,
     //                  the calling process does not have permission to determine

@@ -55,16 +55,41 @@ StatusOr<ConnectorChunkSink::Futures> FileChunkSink::add(ChunkPtr chunk) {
                                                                             _partition_column_evaluators, chunk.get()));
     }
 
-    return HiveUtils::hive_style_partitioning_write_chunk(chunk, partitioned, partition, _max_file_size,
-                                                          _file_writer_factory.get(), _location_provider.get(),
-                                                          _partition_writers);
+    ConnectorChunkSink::Futures futures;
+    auto it = _partition_writers.find(partition);
+    if (it != _partition_writers.end()) {
+        auto* writer = it->second.get();
+        if (writer->get_written_bytes() >= _max_file_size) {
+            auto commit_result = writer->commit();
+            futures.commit_file_results.push_back(std::move(commit_result));
+            _partition_writers.erase(it);
+            auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
+            ASSIGN_OR_RETURN(auto pair, _file_writer_factory->create_async_io_writer(path));
+            auto new_writer = pair.first;
+            futures.async_io_status_futures.push_back(std::move(pair.second));
+            RETURN_IF_ERROR(new_writer->init());
+            RETURN_IF_ERROR(new_writer->write(chunk));
+            _partition_writers.emplace(partition, std::move(new_writer));
+        } else {
+            RETURN_IF_ERROR(writer->write(chunk));
+        }
+    } else {
+        auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
+        ASSIGN_OR_RETURN(auto pair, _file_writer_factory->create_async_io_writer(path));
+        auto new_writer = pair.first;
+        futures.async_io_status_futures.push_back(std::move(pair.second));
+        RETURN_IF_ERROR(new_writer->init());
+        RETURN_IF_ERROR(new_writer->write(chunk));
+        _partition_writers.emplace(partition, std::move(new_writer));
+    }
+    return futures;
 }
 
 ConnectorChunkSink::Futures FileChunkSink::finish() {
     Futures futures;
     for (auto& [_, writer] : _partition_writers) {
         auto f = writer->commit();
-        futures.commit_file_futures.push_back(std::move(f));
+        futures.commit_file_results.push_back(std::move(f));
     }
     return futures;
 }

@@ -360,6 +360,8 @@ public:
     StatusOr<std::unique_ptr<WritableFile>> new_writable_file(const WritableFileOptions& opts,
                                                               const std::string& path) override;
 
+    StatusOr<std::unique_ptr<DirectOutputStream>> new_direct_output_stream(const std::string& path) override;
+
     Status path_exists(const std::string& path) override { return Status::NotSupported("S3FileSystem::path_exists"); }
 
     Status get_children(const std::string& dir, std::vector<std::string>* file) override {
@@ -908,6 +910,15 @@ Status S3FileSystem::delete_dir_recursive(const std::string& dirname) {
         }
     } while (result.GetIsTruncated());
     return directory_exist ? Status::OK() : Status::NotFound(dirname);
+}
+
+StatusOr<std::unique_ptr<io::DirectOutputStream>> S3FileSystem::new_direct_output_stream(const string &path) {
+    S3URI uri;
+    if (!uri.parse(path)) {
+        return Status::InvalidArgument(fmt::format("Invalid S3 URI {}", path));
+    }
+    auto client = new_s3client(uri, _options);
+    auto ostream = std::make_unique<io::S3DirectOutputStream>(std::move(client), uri.bucket(), uri.key());
 }
 
 std::unique_ptr<FileSystem> new_fs_s3(const FSOptions& options) {

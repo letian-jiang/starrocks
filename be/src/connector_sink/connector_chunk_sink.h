@@ -33,8 +33,8 @@ public:
     // If any of the `add_chunk_futures` is not ready, the chunk sink cannot accept more chunks.
     // The chunk sink can still accept chunks if some `add_chunk_futures` is ready or not.
     struct Futures {
-        std::vector<std::future<Status>> add_chunk_futures;
-        std::vector<std::future<formats::FileWriter::CommitResult>> commit_file_futures;
+        std::vector<std::future<Status>> async_io_status_futures;
+        std::vector<formats::FileWriter::CommitResult> commit_file_results;
     };
 
     virtual ~ConnectorChunkSink() = default;

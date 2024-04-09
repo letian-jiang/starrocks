@@ -53,8 +53,8 @@ public:
     virtual ~FileWriter() = default;
     virtual Status init() = 0;
     virtual int64_t get_written_bytes() = 0;
-    virtual std::future<Status> write(ChunkPtr chunk) = 0;
-    virtual std::future<CommitResult> commit() = 0;
+    virtual Status write(ChunkPtr chunk) = 0;
+    virtual CommitResult commit() = 0;
 };
 
 class FileWriterFactory {
@@ -64,6 +64,8 @@ public:
     virtual Status init() = 0;
 
     virtual StatusOr<std::shared_ptr<FileWriter>> create(const std::string& path) const = 0;
+
+    virtual StatusOr<std::pair<std::shared_ptr<FileWriter>, std::future<Status>>> create_async_io_writer(const std::string& path) const = 0;
 };
 
 class UnknownFileWriterFactory : public FileWriterFactory {

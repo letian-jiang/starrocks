@@ -15,6 +15,13 @@
 #pragma once
 
 #include <aws/s3/S3Client.h>
+#include <aws/s3/model/CompleteMultipartUploadRequest.h>
+#include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/PutObjectRequest.h>
+#include <aws/s3/model/UploadPartRequest.h>
+#include <fmt/format.h>
+
+#include "common/logging.h"
 
 #include "io/output_stream.h"
 
@@ -63,6 +70,81 @@ private:
     Aws::String _buffer;
     Aws::String _upload_id;
     std::vector<Aws::String> _etags;
+};
+
+class S3DirectOutputStream : public DirectOutputStream {
+public:
+    S3DirectOutputStream(std::shared_ptr <Aws::S3::S3Client> client, std::string bucket, std::string object)
+            : _client(client), _bucket(std::move(bucket)), _object(std::move(object)) {}
+
+    Status init() override {
+        Aws::S3::Model::CreateMultipartUploadRequest req;
+        req.SetBucket(_bucket);
+        req.SetKey(_object);
+        Aws::S3::Model::CreateMultipartUploadOutcome outcome = _client->CreateMultipartUpload(req);
+        if (outcome.IsSuccess()) {
+            _upload_id = outcome.GetResult().GetUploadId();
+            return Status::OK();
+        }
+        return Status::IOError(
+                fmt::format("S3: Fail to create multipart upload for object {}/{}: {}", _bucket, _object,
+                            outcome.GetError().GetMessage()));
+    }
+
+    // TODO: make `write` thread-safe for concurrent calls
+    Status write(const uint8_t *data, size_t size) override {
+        Aws::S3::Model::UploadPartRequest req;
+        req.SetBucket(_bucket);
+        req.SetKey(_object);
+        req.SetPartNumber(static_cast<int>(_etags.size() + 1));
+        req.SetUploadId(_upload_id);
+        req.SetContentLength(static_cast<int64_t>(_buffer.size()));
+        req.SetBody(std::make_shared<Aws::StringStream>(_buffer));
+        auto outcome = _client->UploadPart(req);
+        if (outcome.IsSuccess()) {
+            _etags.push_back(outcome.GetResult().GetETag());
+            return Status::OK();
+        }
+        return Status::IOError(
+                fmt::format("S3: Fail to upload part of {}/{}: {}", _bucket, _object,
+                            outcome.GetError().GetMessage()));
+    }
+
+    Status close() override {
+        VLOG(12) << "Completing multipart upload s3://" << _bucket << "/" << _object;
+        DCHECK(!_upload_id.empty());
+        DCHECK(!_etags.empty());
+        if (UNLIKELY(_etags.size() > std::numeric_limits<int>::max())) {
+            return Status::NotSupported("Too many S3 upload parts");
+        }
+        Aws::S3::Model::CompleteMultipartUploadRequest req;
+        req.SetBucket(_bucket);
+        req.SetKey(_object);
+        req.SetUploadId(_upload_id);
+        Aws::S3::Model::CompletedMultipartUpload multipart_upload;
+        for (int i = 0, sz = static_cast<int>(_etags.size()); i < sz; ++i) {
+            Aws::S3::Model::CompletedPart part;
+            multipart_upload.AddParts(part.WithETag(_etags[i]).WithPartNumber(i + 1));
+        }
+        req.SetMultipartUpload(multipart_upload);
+        auto outcome = _client->CompleteMultipartUpload(req);
+        if (outcome.IsSuccess()) {
+            return Status::OK();
+        }
+        std::string error_msg = fmt::format("S3: Fail to complete multipart upload for object {}/{}, msg: {}",
+                                            _bucket,
+                                            _object, outcome.GetError().GetMessage());
+        LOG(WARNING) << error_msg;
+        return Status::IOError(error_msg);
+    }
+
+private:
+    std::shared_ptr <Aws::S3::S3Client> _client;
+    const Aws::String _bucket;
+    const Aws::String _object;
+    Aws::String _buffer;
+    Aws::String _upload_id;
+    std::vector <Aws::String> _etags;
 };
 
 } // namespace starrocks::io

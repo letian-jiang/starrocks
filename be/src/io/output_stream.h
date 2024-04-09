@@ -90,4 +90,16 @@ private:
     Ownership _ownership;
 };
 
+
+class DirectOutputStream {
+public:
+    virtual ~DirectOutputStream() = default;
+
+    virtual Status init() = 0;
+
+    virtual Status write(const uint8_t* data, size_t size) = 0;
+
+    virtual Status close() = 0;
+};
+
 } // namespace starrocks::io

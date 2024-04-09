@@ -24,7 +24,7 @@ namespace starrocks::formats {
 
 class OrcOutputStream : public orc::OutputStream {
 public:
-    OrcOutputStream(std::unique_ptr<starrocks::WritableFile> wfile);
+    OrcOutputStream(std::shared_ptr<io::BufferedOutputStream> os) : _os(std::move(os)) {}
 
     ~OrcOutputStream() override;
 
@@ -39,7 +39,7 @@ public:
     const std::string& getName() const override;
 
 private:
-    std::unique_ptr<starrocks::WritableFile> _wfile;
+    std::shared_ptr<io::BufferedOutputStream> _os;
     bool _is_closed = false;
 };
 
@@ -60,9 +60,9 @@ public:
 
     int64_t get_written_bytes() override;
 
-    std::future<Status> write(ChunkPtr chunk) override;
+    Status write(ChunkPtr chunk) override;
 
-    std::future<CommitResult> commit() override;
+    CommitResult commit() override;
 
 private:
     static StatusOr<orc::CompressionKind> _convert_compression_type(TCompressionType::type type);
@@ -123,6 +123,8 @@ public:
     Status init() override;
 
     StatusOr<std::shared_ptr<FileWriter>> create(const std::string& path) const override;
+
+    StatusOr<std::pair<std::shared_ptr<FileWriter>, std::future<Status>>> create_async_io_writer(const std::string& path) const override;
 
 private:
     std::shared_ptr<FileSystem> _fs;

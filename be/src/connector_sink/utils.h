@@ -40,26 +40,26 @@ class LocationProvider;
 class HiveUtils {
 public:
     static StatusOr<std::string> make_partition_name(
-            const std::vector<std::string>& column_names,
-            const std::vector<std::unique_ptr<ColumnEvaluator>>& column_evaluators, Chunk* chunk);
+            const std::vector<std::string> &column_names,
+            const std::vector<std::unique_ptr<ColumnEvaluator>> &column_evaluators, Chunk *chunk);
 
     static StatusOr<std::string> make_partition_name_nullable(
-            const std::vector<std::string>& column_names,
-            const std::vector<std::unique_ptr<ColumnEvaluator>>& column_evaluators, Chunk* chunk);
+            const std::vector<std::string> &column_names,
+            const std::vector<std::unique_ptr<ColumnEvaluator>> &column_evaluators, Chunk *chunk);
 
     static StatusOr<ConnectorChunkSink::Futures> hive_style_partitioning_write_chunk(
-            const ChunkPtr& chunk, bool partitioned, const std::string& partition, int64_t max_file_size,
-            const formats::FileWriterFactory* file_writer_factory, LocationProvider* location_provider,
-            std::map<std::string, std::shared_ptr<formats::FileWriter>>& partition_writers);
+            const ChunkPtr &chunk, bool partitioned, const std::string &partition, int64_t max_file_size,
+            const formats::FileWriterFactory *file_writer_factory, LocationProvider *location_provider,
+            std::map<std::string, std::shared_ptr<formats::FileWriter>> &partition_writers);
 
 private:
-    static StatusOr<std::string> column_value(const TypeDescriptor& type_desc, const ColumnPtr& column);
+    static StatusOr<std::string> column_value(const TypeDescriptor &type_desc, const ColumnPtr &column);
 };
 
 class IcebergUtils {
 public:
     static std::vector<formats::FileColumnId> generate_parquet_field_ids(
-            const std::vector<TIcebergSchemaField>& fields);
+            const std::vector<TIcebergSchemaField> &fields);
 
     inline const static std::string DATA_DIRECTORY = "/data";
 };
@@ -67,20 +67,20 @@ public:
 class PathUtils {
 public:
     // requires: path contains "/"
-    static std::string get_parent_path(const std::string& path) {
+    static std::string get_parent_path(const std::string &path) {
         std::size_t i = path.find_last_of("/");
         CHECK_NE(i, std::string::npos);
         return path.substr(0, i);
     }
 
     // requires: path contains "/"
-    static std::string get_filename(const std::string& path) {
+    static std::string get_filename(const std::string &path) {
         std::size_t i = path.find_last_of("/");
         CHECK_NE(i, std::string::npos);
         return path.substr(i + 1);
     }
 
-    static std::string remove_trailing_slash(const std::string& path) {
+    static std::string remove_trailing_slash(const std::string &path) {
         if (path.ends_with("/")) {
             return path.substr(0, path.size() - 1);
         }
@@ -92,20 +92,23 @@ public:
 class LocationProvider {
 public:
     // file_name_prefix = {query_id}_{be_number}_{driver_id}
-    LocationProvider(const std::string& base_path, const std::string& query_id, int be_number, int driver_id,
-                     const std::string& file_suffix)
+    LocationProvider(const std::string &base_path, const std::string &query_id, int be_number, int driver_id,
+                     const std::string &file_suffix)
             : _base_path(PathUtils::remove_trailing_slash(base_path)),
               _file_name_prefix(fmt::format("{}_{}_{}", query_id, be_number, driver_id)),
               _file_name_suffix(file_suffix) {}
 
     // location = base_path/partition/{query_id}_{be_number}_{driver_id}_index.file_suffix
-    std::string get(const std::string& partition) {
-        return fmt::format("{}/{}/{}_{}.{}", _base_path, PathUtils::remove_trailing_slash(partition), _file_name_prefix,
+    std::string get(const std::string &partition) {
+        return fmt::format("{}/{}/{}_{}.{}", _base_path, PathUtils::remove_trailing_slash(partition),
+                           _file_name_prefix,
                            _partition2index[partition]++, _file_name_suffix);
     }
 
     // location = base_path/{query_id}_{be_number}_{driver_id}_index.file_suffix
-    std::string get() { return fmt::format("{}/{}_{}.{}", _base_path, _file_name_prefix, _index++, _file_name_suffix); }
+    std::string get() {
+        return fmt::format("{}/{}_{}.{}", _base_path, _file_name_prefix, _index++, _file_name_suffix);
+    }
 
 private:
     const std::string _base_path;
@@ -114,6 +117,10 @@ private:
     int _index = 0;
     std::map<std::string, int> _partition2index;
 };
+
+} // namespace starrocks::connector
+
+namespace starrocks {
 
 class TaskExecutor {
 public:
@@ -142,7 +149,7 @@ public:
                 // clean up once task is done
                 {
                     std::lock_guard lock(_mu);
-                    for (Token downstream_token : _graph[token]) {
+                    for (Token downstream_token: _graph[token]) {
                         _reversed_graph[downstream_token].erase(token);
                         if (_reversed_graph[downstream_token].empty()) {
                             LOG(INFO) << "TaskQueue: task of token " << downstream_token << " is ready";
@@ -166,7 +173,7 @@ public:
 
             // remove in-existent task tokens (which may have been done)
             std::erase_if(upstream_tokens, [&](auto t) { return !_token2task.contains(t); });
-            for (Token upstream_token : upstream_tokens) {
+            for (Token upstream_token: upstream_tokens) {
                 _graph[upstream_token].insert(token);
             }
             _reversed_graph[token] = std::move(upstream_tokens);
@@ -188,7 +195,7 @@ public:
 
     ~TaskExecutor() {
         _done.store(true);
-        for (auto& t : _threads) {
+        for (auto &t: _threads) {
             t.join();
         }
     }
@@ -207,13 +214,13 @@ public:
         }
     }
 
-    template <typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
-    [[nodiscard]] std::shared_future<R> submit(F&& task, Token* token = nullptr) {
+    template<typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    [[nodiscard]] std::shared_future<R> submit(F &&task, Token *token = nullptr) {
         return submit(std::move(task), {}, token);
     }
 
-    template <typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
-    [[nodiscard]] std::shared_future<R> submit(F&& task, std::set<Token> upstream_tasks, Token* token = nullptr) {
+    template<typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    [[nodiscard]] std::shared_future<R> submit(F &&task, std::set<Token> upstream_tasks, Token *token = nullptr) {
         const std::shared_ptr<std::promise<R>> task_promise = std::make_shared<std::promise<R>>();
         Token task_token = _next_token.fetch_add(1);
         if (token != nullptr) {
@@ -243,117 +250,59 @@ private:
     std::vector<std::thread> _threads;
 };
 
-class DirectOutputStream {
-public:
-    virtual ~DirectOutputStream() = default;
-
-    virtual Status init() = 0;
-
-    virtual Status write(const uint8_t* data, size_t size) = 0;
-
-    virtual Status close() = 0;
-};
-
-class S3DirectOutputStream : public DirectOutputStream {
-public:
-    S3DirectOutputStream(std::shared_ptr<Aws::S3::S3Client> client, std::string bucket, std::string object)
-            : _client(client), _bucket(std::move(bucket)), _object(std::move(object)) {}
-
-    Status init() override {
-        Aws::S3::Model::CreateMultipartUploadRequest req;
-        req.SetBucket(_bucket);
-        req.SetKey(_object);
-        Aws::S3::Model::CreateMultipartUploadOutcome outcome = _client->CreateMultipartUpload(req);
-        if (outcome.IsSuccess()) {
-            _upload_id = outcome.GetResult().GetUploadId();
-            return Status::OK();
-        }
-        return Status::IOError(fmt::format("S3: Fail to create multipart upload for object {}/{}: {}", _bucket, _object,
-                                           outcome.GetError().GetMessage()));
-    }
-
-    // TODO: make `write` thread-safe for concurrent calls
-    Status write(const uint8_t* data, size_t size) override {
-        Aws::S3::Model::UploadPartRequest req;
-        req.SetBucket(_bucket);
-        req.SetKey(_object);
-        req.SetPartNumber(static_cast<int>(_etags.size() + 1));
-        req.SetUploadId(_upload_id);
-        req.SetContentLength(static_cast<int64_t>(_buffer.size()));
-        req.SetBody(std::make_shared<Aws::StringStream>(_buffer));
-        auto outcome = _client->UploadPart(req);
-        if (outcome.IsSuccess()) {
-            _etags.push_back(outcome.GetResult().GetETag());
-            return Status::OK();
-        }
-        return Status::IOError(
-                fmt::format("S3: Fail to upload part of {}/{}: {}", _bucket, _object, outcome.GetError().GetMessage()));
-    }
-
-    Status close() override {
-        VLOG(12) << "Completing multipart upload s3://" << _bucket << "/" << _object;
-        DCHECK(!_upload_id.empty());
-        DCHECK(!_etags.empty());
-        if (UNLIKELY(_etags.size() > std::numeric_limits<int>::max())) {
-            return Status::NotSupported("Too many S3 upload parts");
-        }
-        Aws::S3::Model::CompleteMultipartUploadRequest req;
-        req.SetBucket(_bucket);
-        req.SetKey(_object);
-        req.SetUploadId(_upload_id);
-        Aws::S3::Model::CompletedMultipartUpload multipart_upload;
-        for (int i = 0, sz = static_cast<int>(_etags.size()); i < sz; ++i) {
-            Aws::S3::Model::CompletedPart part;
-            multipart_upload.AddParts(part.WithETag(_etags[i]).WithPartNumber(i + 1));
-        }
-        req.SetMultipartUpload(multipart_upload);
-        auto outcome = _client->CompleteMultipartUpload(req);
-        if (outcome.IsSuccess()) {
-            return Status::OK();
-        }
-        std::string error_msg = fmt::format("S3: Fail to complete multipart upload for object {}/{}, msg: {}", _bucket,
-                                            _object, outcome.GetError().GetMessage());
-        LOG(WARNING) << error_msg;
-        return Status::IOError(error_msg);
-    }
-
-private:
-    std::shared_ptr<Aws::S3::S3Client> _client;
-    const Aws::String _bucket;
-    const Aws::String _object;
-    Aws::String _buffer;
-    Aws::String _upload_id;
-    std::vector<Aws::String> _etags;
-};
-
+namespace io {
 // live until all io tasks are finished
-class BufferedOutputStream {
-public:
-    BufferedOutputStream(std::unique_ptr<DirectOutputStream> output_stream, TaskExecutor* task_executor)
-            : _output_stream(std::move(output_stream)), _task_executor(task_executor){};
+    class BufferedOutputStream {
+    public:
+        BufferedOutputStream(std::unique_ptr<io::DirectOutputStream> output_stream, TaskExecutor *task_executor)
+                : _output_stream(std::move(output_stream)), _task_executor(task_executor) {};
 
-    Status init() {
-        _task_execution_context.init_future = _task_executor->submit([s = _output_stream.get()]() { return s->init(); },
-                                                                     &_task_execution_context.init_token);
+        Status init() {
+            _task_execution_context.init_future = _task_executor->submit(
+                    [s = _output_stream.get()]() { return s->init(); },
+                    &_task_execution_context.init_token);
 
-        return Status::OK();
-    }
-
-    Status write(const uint8_t* data, size_t size) {
-        if (_slice_chunk == nullptr) {
-            _slice_chunk = std::make_shared<SliceChunk>(64 * 1024); // TODO: config
+            return Status::OK();
         }
 
-        while (size != 0) {
-            size_t appended_size = _slice_chunk->append(data, size);
-            data += appended_size;
-            size -= appended_size;
-            if (_slice_chunk->is_full()) {
-                // submit;
+        Status write(const uint8_t *data, size_t size) {
+            if (_slice_chunk == nullptr) {
+                _slice_chunk = std::make_shared<SliceChunk>(64 * 1024); // TODO: config
+            }
+
+            while (size != 0) {
+                size_t appended_size = _slice_chunk->append(data, size);
+                data += appended_size;
+                size -= appended_size;
+                if (_slice_chunk->is_full()) {
+                    // submit;
+                    Token task_token;
+                    _task_execution_context.flush_part_futures.push_back(_task_executor->submit(
+                            [s = _output_stream.get(), slice_chunk = _slice_chunk,
+                                    init_future = _task_execution_context.init_future]() {
+                                DCHECK(is_ready(init_future));
+                                Status init_status = init_future.get();
+                                if (!init_status.ok()) {
+                                    return init_status;
+                                }
+                                return s->write(slice_chunk->data(), slice_chunk->size());
+                            },
+                            {_task_execution_context.flush_part_tokens.back()}, &task_token));
+                    _task_execution_context.flush_part_tokens.push_back(task_token);
+                    _slice_chunk = std::make_shared<SliceChunk>(64 * 1024);
+                }
+            }
+
+            return Status::OK();
+        }
+
+        Status close() {
+            if (_slice_chunk != nullptr && _slice_chunk->is_empty()) {
+                // submit
                 Token task_token;
                 _task_execution_context.flush_part_futures.push_back(_task_executor->submit(
                         [s = _output_stream.get(), slice_chunk = _slice_chunk,
-                         init_future = _task_execution_context.init_future]() {
+                                init_future = _task_execution_context.init_future]() {
                             DCHECK(is_ready(init_future));
                             Status init_status = init_future.get();
                             if (!init_status.ok()) {
@@ -365,88 +314,67 @@ public:
                 _task_execution_context.flush_part_tokens.push_back(task_token);
                 _slice_chunk = std::make_shared<SliceChunk>(64 * 1024);
             }
-        }
 
-        return Status::OK();
-    }
-
-    Status close() {
-        if (_slice_chunk != nullptr && _slice_chunk->is_empty()) {
-            // submit
-            Token task_token;
-            _task_execution_context.flush_part_futures.push_back(_task_executor->submit(
-                    [s = _output_stream.get(), slice_chunk = _slice_chunk,
-                     init_future = _task_execution_context.init_future]() {
-                        DCHECK(is_ready(init_future));
-                        Status init_status = init_future.get();
-                        if (!init_status.ok()) {
-                            return init_status;
-                        }
-                        return s->write(slice_chunk->data(), slice_chunk->size());
-                    },
-                    {_task_execution_context.flush_part_tokens.back()}, &task_token));
-            _task_execution_context.flush_part_tokens.push_back(task_token);
+            // close
+            _task_execution_context.close_future =
+                    _task_executor->submit([s = _output_stream.get(), slice_chunk = _slice_chunk,
+                                                   init_future = _task_execution_context.init_future]() { return s->close(); },
+                                           {_task_execution_context.flush_part_tokens.back()});
             _slice_chunk = std::make_shared<SliceChunk>(64 * 1024);
+
+            return Status::OK();
         }
 
-        // close
-        Token task_token;
-        _task_execution_context.flush_part_futures.push_back(
-                _task_executor->submit([s = _output_stream.get(), slice_chunk = _slice_chunk,
-                                        init_future = _task_execution_context.init_future]() { return s->close(); },
-                                       {_task_execution_context.flush_part_tokens.back()}, &task_token));
-        _task_execution_context.flush_part_tokens.push_back(task_token);
-        _slice_chunk = std::make_shared<SliceChunk>(64 * 1024);
+        size_t tell() const { return 0; }
 
-        return Status::OK();
-    }
+        std::string name() const { return "filename"; }
 
-    size_t tell() { return 0; }
-
-    std::future<Status> io_status() { return make_ready_future(Status::OK()); }
-
-private:
-    using Token = TaskExecutor::Token;
-
-    struct TaskExecutionContext {
-        Token init_token;
-        std::shared_future<Status> init_future;
-        std::vector<Token> flush_part_tokens;
-        std::vector<std::shared_future<Status>> flush_part_futures;
-        std::shared_future<Status> close_future;
-    };
-
-    class SliceChunk {
-    public:
-        SliceChunk(size_t n_bytes) : _data(n_bytes), _capacity(n_bytes) {}
-
-        size_t append(const uint8_t* data, size_t size) {
-            size_t available_bytes = _capacity - _size;
-            size_t to_append_bytes = std::min(available_bytes, size);
-            memcpy(_data.data() + _size, data, size);
-            _size += to_append_bytes;
-            return to_append_bytes;
-        }
-
-        bool is_full() { return _size == _capacity; }
-
-        bool is_empty() { return _size == 0; }
-
-        const uint8_t* data() { return _data.data(); }
-
-        size_t size() { return _size; }
+        std::shared_future<Status> io_status() { return _task_execution_context.close_future; }
 
     private:
-        std::vector<uint8_t> _data;
-        size_t _size{0};
-        size_t _capacity;
+        using Token = TaskExecutor::Token;
+
+        struct TaskExecutionContext {
+            Token init_token;
+            std::shared_future<Status> init_future;
+            std::vector<Token> flush_part_tokens;
+            std::vector<std::shared_future<Status>> flush_part_futures;
+            std::shared_future<Status> close_future;
+        };
+
+        class SliceChunk {
+        public:
+            SliceChunk(size_t n_bytes) : _data(n_bytes), _capacity(n_bytes) {}
+
+            size_t append(const uint8_t *data, size_t size) {
+                size_t available_bytes = _capacity - _size;
+                size_t to_append_bytes = std::min(available_bytes, size);
+                memcpy(_data.data() + _size, data, size);
+                _size += to_append_bytes;
+                return to_append_bytes;
+            }
+
+            bool is_full() { return _size == _capacity; }
+
+            bool is_empty() { return _size == 0; }
+
+            const uint8_t *data() { return _data.data(); }
+
+            size_t size() { return _size; }
+
+        private:
+            std::vector<uint8_t> _data;
+            size_t _size{0};
+            size_t _capacity;
+        };
+
+        TaskExecutionContext _task_execution_context;
+
+        std::unique_ptr<io::DirectOutputStream> _output_stream;
+        std::shared_ptr<SliceChunk> _slice_chunk;
+        TaskExecutor *_task_executor;
     };
 
-    TaskExecutionContext _task_execution_context;
+} // namespace io
 
-    std::unique_ptr<DirectOutputStream> _output_stream;
-    std::shared_ptr<SliceChunk> _slice_chunk;
-    TaskExecutor* _task_executor;
-};
-
-} // namespace starrocks::connector
+} // namespace starrocks
