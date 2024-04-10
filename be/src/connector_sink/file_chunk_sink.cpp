@@ -66,10 +66,10 @@ StatusOr<ConnectorChunkSink::Futures> FileChunkSink::add(ChunkPtr chunk) {
             auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
             ASSIGN_OR_RETURN(auto pair, _file_writer_factory->create_async_io_writer(path));
             auto new_writer = pair.first;
-            futures.async_io_status_futures.push_back(std::move(pair.second));
             RETURN_IF_ERROR(new_writer->init());
             RETURN_IF_ERROR(new_writer->write(chunk));
             _partition_writers.emplace(partition, std::move(new_writer));
+            futures.async_io_status_futures.push_back(std::move(pair.second));
         } else {
             RETURN_IF_ERROR(writer->write(chunk));
         }
@@ -77,10 +77,10 @@ StatusOr<ConnectorChunkSink::Futures> FileChunkSink::add(ChunkPtr chunk) {
         auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
         ASSIGN_OR_RETURN(auto pair, _file_writer_factory->create_async_io_writer(path));
         auto new_writer = pair.first;
-        futures.async_io_status_futures.push_back(std::move(pair.second));
         RETURN_IF_ERROR(new_writer->init());
         RETURN_IF_ERROR(new_writer->write(chunk));
         _partition_writers.emplace(partition, std::move(new_writer));
+        futures.async_io_status_futures.push_back(std::move(pair.second));
     }
     return futures;
 }
@@ -112,20 +112,12 @@ StatusOr<std::unique_ptr<ConnectorChunkSink>> FileChunkSinkProvider::create_chun
             boost::to_lower_copy(ctx->format));
 
     std::unique_ptr<formats::FileWriterFactory> file_writer_factory;
-    if (boost::iequals(ctx->format, formats::PARQUET)) {
-        file_writer_factory = std::make_unique<formats::ParquetFileWriterFactory>(
-                std::move(fs), ctx->compression_type, ctx->options, ctx->column_names, std::move(column_evaluators),
-                std::nullopt, ctx->executor, runtime_state);
-    } else if (boost::iequals(ctx->format, formats::ORC)) {
+    if (boost::iequals(ctx->format, formats::ORC)) {
         file_writer_factory = std::make_unique<formats::ORCFileWriterFactory>(
                 std::move(fs), ctx->compression_type, ctx->options, ctx->column_names, std::move(column_evaluators),
                 ctx->executor, runtime_state);
-    } else if (boost::iequals(ctx->format, formats::CSV)) {
-        file_writer_factory = std::make_unique<formats::CSVFileWriterFactory>(
-                std::move(fs), ctx->compression_type, ctx->options, ctx->column_names, std::move(column_evaluators),
-                ctx->executor, runtime_state);
     } else {
-        file_writer_factory = std::make_unique<formats::UnknownFileWriterFactory>(ctx->format);
+        CHECK(false);
     }
 
     std::vector<std::string> partition_columns;

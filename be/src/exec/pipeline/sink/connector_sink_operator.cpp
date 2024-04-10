@@ -52,16 +52,16 @@ bool ConnectorSinkOperator::need_input() const {
         return false;
     }
 
-    while (!_add_chunk_future_queue.empty()) {
+    while (!_async_io_status_future_queue.empty()) {
         // cannot accept chunk if any add_chunk_futures is not ready
-        if (!is_ready(_add_chunk_future_queue.front())) {
-            return false;
+        if (!is_ready(_async_io_status_future_queue.front())) {
+            break;
         }
-        if (auto st = _add_chunk_future_queue.front().get(); !st.ok()) {
+        if (auto st = _async_io_status_future_queue.front().get(); !st.ok()) {
             LOG(WARNING) << "cancel fragment: " << st;
             _fragment_context->cancel(st);
         }
-        _add_chunk_future_queue.pop();
+        _async_io_status_future_queue.pop();
     }
 
     return true;
@@ -72,40 +72,18 @@ bool ConnectorSinkOperator::is_finished() const {
         return false;
     }
 
-    while (!_add_chunk_future_queue.empty()) {
-        // unfinished if any add_chunk_futures future is not ready
-        if (!is_ready(_add_chunk_future_queue.front())) {
-            return false;
+    while (!_async_io_status_future_queue.empty()) {
+        // cannot accept chunk if any add_chunk_futures is not ready
+        if (!is_ready(_async_io_status_future_queue.front())) {
+            break;
         }
-
-        if (auto st = _add_chunk_future_queue.front().get(); !st.ok()) {
+        if (auto st = _async_io_status_future_queue.front().get(); !st.ok()) {
             LOG(WARNING) << "cancel fragment: " << st;
             _fragment_context->cancel(st);
         }
-        _add_chunk_future_queue.pop();
+        _async_io_status_future_queue.pop();
     }
 
-    while (!_commit_file_future_queue.empty()) {
-        // unfinished if any commit_file_futures future is not ready
-        if (!is_ready(_commit_file_future_queue.front())) {
-            return false;
-        }
-
-        auto result = _commit_file_future_queue.front().get();
-        _commit_file_future_queue.pop();
-
-        if (auto st = result.io_status; st.ok()) {
-            // invoke callback if file commit succeed
-            _connector_chunk_sink->callback_on_success()(result);
-        } else {
-            LOG(WARNING) << "cancel fragment: " << st;
-            _fragment_context->cancel(st);
-        }
-        _rollback_actions.push(std::move(result.rollback_action));
-    }
-
-    DCHECK(_add_chunk_future_queue.empty());
-    DCHECK(_commit_file_future_queue.empty());
     return true;
 }
 
@@ -136,11 +114,18 @@ Status ConnectorSinkOperator::push_chunk(RuntimeState* state, const ChunkPtr& ch
 }
 
 void ConnectorSinkOperator::_enqueue_futures(connector::ConnectorChunkSink::Futures futures) {
-    for (auto& f : futures.add_chunk_futures) {
-        _add_chunk_future_queue.push(std::move(f));
+    for (auto& result : futures.commit_file_results) {
+        if (auto st = result.io_status; st.ok()) {
+            // invoke callback if file commit succeed
+            _connector_chunk_sink->callback_on_success()(result);
+        } else {
+            LOG(WARNING) << "cancel fragment: " << st;
+            _fragment_context->cancel(st);
+        }
+        _rollback_actions.push(std::move(result.rollback_action));
     }
-    for (auto& f : futures.commit_file_futures) {
-        _commit_file_future_queue.push(std::move(f));
+    for (auto& f : futures.async_io_status_futures) {
+        _async_io_status_future_queue.push(std::move(f));
     }
 }
 
