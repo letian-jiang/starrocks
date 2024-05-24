@@ -30,6 +30,7 @@ namespace starrocks::formats {
 OrcOutputStream::OrcOutputStream(std::unique_ptr<starrocks::WritableFile> wfile) : _wfile(std::move(wfile)) {}
 
 OrcOutputStream::~OrcOutputStream() {
+    // error
     if (!_is_closed) {
         close();
     }
@@ -73,9 +74,9 @@ void OrcOutputStream::close() {
 AsyncOrcOutputStream::AsyncOrcOutputStream(io::AsyncFlushOutputStream* stream) : _stream(stream) {}
 
 AsyncOrcOutputStream::~AsyncOrcOutputStream() {
-    if (!_is_closed) {
-        close();
-    }
+//    if (!_is_closed) {
+//        close();
+//    }
 }
 
 uint64_t AsyncOrcOutputStream::getLength() const {
@@ -174,9 +175,6 @@ FileWriter::CommitResult ORCFileWriter::commit() {
         result.file_statistics.record_count = _row_counter;
         result.file_statistics.file_size = _output_stream->getLength();
     }
-
-    auto promise = std::make_shared<std::promise<FileWriter::CommitResult>>();
-    std::future<FileWriter::CommitResult> future = promise->get_future();
 
     _writer = nullptr;
     return result;
@@ -516,7 +514,7 @@ StatusOr<std::shared_ptr<FileWriter>> ORCFileWriterFactory::create(const std::st
 }
 
 StatusOr<WriterAndStream> ORCFileWriterFactory::createAsync(const string &path) const {
-    ASSIGN_OR_RETURN(auto file, _fs->new_writable_file(path));
+    ASSIGN_OR_RETURN(auto file, _fs->new_writable_file(WritableFileOptions{.direct_write=true}, path));
     auto rollback_action = [fs = _fs, path = path]() {
         WARN_IF_ERROR(ignore_not_found(fs->delete_file(path)), "fail to delete file");
     };

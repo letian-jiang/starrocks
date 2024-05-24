@@ -23,9 +23,7 @@
 #include "util/failpoint/fail_point.h"
 #include "util/stack_util.h"
 
-#ifndef BE_TEST
 #include "runtime/exec_env.h"
-#endif
 
 #define ALIAS(my_fn) __attribute__((alias(#my_fn), used))
 
@@ -197,7 +195,6 @@ void operator delete[](void* p, size_t size, std::align_val_t al) noexcept {
 #define STARROCKS_CFREE(ptr) je_free(ptr)
 #define STARROCKS_VALLOC(size) je_valloc(size)
 
-#ifndef BE_TEST
 #define MEMORY_CONSUME_SIZE(size)                                      \
     do {                                                               \
         if (LIKELY(starrocks::tls_is_thread_status_init)) {            \
@@ -227,16 +224,6 @@ void operator delete[](void* p, size_t size, std::align_val_t al) noexcept {
 #define SET_EXCEED_MEM_TRACKER() \
     starrocks::tls_exceed_mem_tracker = starrocks::GlobalEnv::GetInstance()->process_mem_tracker()
 #define IS_BAD_ALLOC_CATCHED() starrocks::tls_thread_status.is_catched()
-#else
-std::atomic<int64_t> g_mem_usage(0);
-#define MEMORY_CONSUME_SIZE(size) g_mem_usage.fetch_add(size)
-#define MEMORY_RELEASE_SIZE(size) g_mem_usage.fetch_sub(size)
-#define MEMORY_CONSUME_PTR(ptr) g_mem_usage.fetch_add(STARROCKS_MALLOC_SIZE(ptr))
-#define MEMORY_RELEASE_PTR(ptr) g_mem_usage.fetch_sub(STARROCKS_MALLOC_SIZE(ptr))
-#define TRY_MEM_CONSUME(size, err_ret) g_mem_usage.fetch_add(size)
-#define SET_EXCEED_MEM_TRACKER() (void)0
-#define IS_BAD_ALLOC_CATCHED() false
-#endif
 
 const size_t large_memory_alloc_report_threshold = 1073741824;
 inline thread_local bool skip_report = false;

@@ -63,20 +63,16 @@ Status FileChunkSink::add(ChunkPtr chunk) {
     auto it = _writer_stream_pairs.find(partition);
     if (it != _writer_stream_pairs.end()) {
         Writer* writer = it->second.first.get();
-        if (writer->get_written_bytes() >= _max_file_size) {
-            callback_on_success(writer->commit());
-            _writer_stream_pairs.erase(it);
-            auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
-            ASSIGN_OR_RETURN(auto new_writer_and_stream, _file_writer_factory->createAsync(path));
-            std::unique_ptr<Writer> new_writer =  std::move(new_writer_and_stream.writer);
-            std::unique_ptr<Stream> new_stream = std::move(new_writer_and_stream.stream);
-            RETURN_IF_ERROR(new_writer->init());
-            RETURN_IF_ERROR(new_writer->write(chunk));
-            _writer_stream_pairs[partition] = std::make_pair(std::move(new_writer), new_stream.get());
-            _io_poller->enqueue(std::move(new_stream));
-        } else {
-            RETURN_IF_ERROR(writer->write(chunk));
-        }
+        callback_on_success(writer->commit());
+        _writer_stream_pairs.erase(it);
+        auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
+        ASSIGN_OR_RETURN(auto new_writer_and_stream, _file_writer_factory->createAsync(path));
+        std::unique_ptr<Writer> new_writer =  std::move(new_writer_and_stream.writer);
+        std::unique_ptr<Stream> new_stream = std::move(new_writer_and_stream.stream);
+        RETURN_IF_ERROR(new_writer->init());
+        RETURN_IF_ERROR(new_writer->write(chunk));
+        _writer_stream_pairs[partition] = std::make_pair(std::move(new_writer), new_stream.get());
+        _io_poller->enqueue(std::move(new_stream));
     } else {
         auto path = partitioned ? _location_provider->get(partition) : _location_provider->get();
         ASSIGN_OR_RETURN(auto new_writer_and_stream, _file_writer_factory->createAsync(path));

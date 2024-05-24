@@ -117,16 +117,9 @@ Status TableFunctionTableSink::decompose_to_pipeline(pipeline::OpFactories prev_
         context->add_pipeline(std::move(ops));
 
     } else {
-        std::vector<TExpr> partition_exprs;
-        for (auto id : target_table.partition_column_ids) {
-            partition_exprs.push_back(output_exprs[id]);
-        }
-        std::vector<ExprContext*> partition_expr_ctxs;
-        RETURN_IF_ERROR(Expr::create_expr_trees(runtime_state->obj_pool(), partition_exprs, &partition_expr_ctxs,
-                                                runtime_state));
-        auto ops = context->interpolate_local_key_partition_exchange(
-                runtime_state, pipeline::Operator::s_pseudo_plan_node_id_for_final_sink, prev_operators,
-                partition_expr_ctxs, sink_dop);
+        auto ops = context->maybe_interpolate_local_passthrough_exchange(
+                runtime_state, pipeline::Operator::s_pseudo_plan_node_id_for_final_sink, prev_operators, sink_dop,
+                pipeline::LocalExchanger::PassThroughType::SCALE);
         ops.emplace_back(std::move(op));
         context->add_pipeline(std::move(ops));
     }

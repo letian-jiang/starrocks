@@ -35,7 +35,8 @@ public:
 
     class SliceChunk {
     public:
-        using Buffer = raw::RawVector<uint8_t>; // for RAII and eliminating initialization overhead
+        // using Buffer = raw::RawVector<uint8_t>; // for RAII and eliminating initialization overhead
+        using Buffer = std::vector<uint8_t>;
 
         SliceChunk(int64_t max_size) : max_size_(max_size) {}
 
@@ -66,7 +67,7 @@ public:
         int64_t max_size_{0};
     };
 
-    using SliceChunkPtr = std::shared_ptr<SliceChunk>;
+    using SliceChunkPtr = SliceChunk*;
     using Task = std::function<void()>;
 
     AsyncFlushOutputStream(std::unique_ptr<WritableFile> file, PriorityThreadPool* io_executor, RuntimeState* runtime_state) : _file(std::move(file)), _io_executor(io_executor), _runtime_state(runtime_state) {}
@@ -78,7 +79,7 @@ public:
         while (size > 0) {
             // append a new buffer if queue is empty or the last buffer is full
             if (_slice_chunk_queue.empty() || _slice_chunk_queue.back()->is_full()) {
-                _slice_chunk_queue.push_back(std::make_shared<SliceChunk>(BUFFER_MAX_SIZE));
+                _slice_chunk_queue.push_back(new SliceChunk(BUFFER_MAX_SIZE));
             }
             SliceChunkPtr& last_chunk = _slice_chunk_queue.back();
             int64_t appended_bytes = last_chunk->append(data, size);
@@ -90,30 +91,33 @@ public:
         std::vector<Task> to_enqueue_tasks;
         {
             while (!_slice_chunk_queue.empty() && _slice_chunk_queue.front()->is_full()) {
-                auto chunk = _slice_chunk_queue.front();
+                auto* chunk = _slice_chunk_queue.front();
                 _slice_chunk_queue.pop_front();
                 _releasable_bytes.fetch_add(chunk->get_buffer()->capacity());
 
-                auto task = [this, chunk = std::move(chunk)]() mutable {
-                    SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
-                    CurrentThread::current().set_query_id(_runtime_state->query_id());
-                    CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
-                    auto buffer = chunk->get_buffer();
-                    DeferOp op([this, capacity = buffer->capacity()] {
-                        _releasable_bytes.fetch_sub(capacity);
-                    });
-                    auto status = _file->append(Slice(buffer->data(), buffer->size()));
-                    chunk = nullptr;
+                auto task = [this, chunk]() mutable {
+                     SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
                     {
-                        std::scoped_lock lock(_mutex);
-                        _io_status.update(status);
-                        if (_task_queue.empty()) {
-                            _has_in_flight_io = false;
-                            return;
+                        CurrentThread::current().set_query_id(_runtime_state->query_id());
+                        CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
+                        auto buffer = chunk->get_buffer();
+                        DeferOp op([this, chunk, capacity = buffer->capacity()] {
+                            _releasable_bytes.fetch_sub(capacity);
+                            delete chunk;
+                        });
+                        auto status = _file->append(Slice(buffer->data(), buffer->size()));
+                        chunk = nullptr;
+                        {
+                            std::scoped_lock lock(_mutex);
+                            _io_status.update(status);
+                            if (_task_queue.empty()) {
+                                _has_in_flight_io = false;
+                                return;
+                            }
+                            auto task = _task_queue.front();
+                            _task_queue.pop();
+                            CHECK(_io_executor->offer(task)); // TODO: handle
                         }
-                        auto task = _task_queue.front();
-                        _task_queue.pop();
-                        CHECK(_io_executor->offer(task)); // TODO: handle
                     }
                 };
                 to_enqueue_tasks.push_back(task);
@@ -144,46 +148,50 @@ public:
                         << "empty or at most one not full buffer";
 
         std::vector<Task> to_enqueue_tasks;
-        if (!_slice_chunk_queue.empty() || !_slice_chunk_queue.front()->is_empty()) {
-            auto chunk = _slice_chunk_queue.front();
+        if (!_slice_chunk_queue.empty() && !_slice_chunk_queue.front()->is_empty()) {
+            auto* chunk = _slice_chunk_queue.front();
             _slice_chunk_queue.pop_front();
             _releasable_bytes.fetch_add(chunk->get_buffer()->capacity());
-            auto task = [&, chunk = std::move(chunk)]() mutable{
-                SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
-                CurrentThread::current().set_query_id(_runtime_state->query_id());
-                CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
-                auto buffer = chunk->get_buffer();
-                DeferOp op([this, capacity = buffer->capacity()] {
-                    _releasable_bytes.fetch_sub(capacity);
-                });
-                auto status = _file->append(Slice(buffer->data(), buffer->size()));
-                chunk = nullptr;
+            auto task = [this, chunk]() mutable {
+                 SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
                 {
-                    std::scoped_lock lock(_mutex);
-                    _io_status.update(status);
-                    if (_task_queue.empty()) {
-                        _has_in_flight_io = false;
-                        return;
+                    CurrentThread::current().set_query_id(_runtime_state->query_id());
+                    CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
+                    auto buffer = chunk->get_buffer();
+                    DeferOp op([this, chunk, capacity = buffer->capacity()] {
+                        _releasable_bytes.fetch_sub(capacity);
+                        delete chunk;
+                    });
+                    auto status = _file->append(Slice(buffer->data(), buffer->size()));
+                    {
+                        std::scoped_lock lock(_mutex);
+                        _io_status.update(status);
+                        if (_task_queue.empty()) {
+                            _has_in_flight_io = false;
+                            return;
+                        }
+                        auto task = _task_queue.front();
+                        _task_queue.pop();
+                        CHECK(_io_executor->offer(task)); // TODO: handle
                     }
-                    auto task = _task_queue.front();
-                    _task_queue.pop();
-                    CHECK(_io_executor->offer(task)); // TODO: handle
                 }
             };
             to_enqueue_tasks.push_back(task);
         }
 
-        auto close_task = [&]() {
-            SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
-            CurrentThread::current().set_query_id(_runtime_state->query_id());
-            CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
-            auto status = _file->close();
+        auto close_task = [this]() {
+             SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_runtime_state->instance_mem_tracker());
             {
-                std::scoped_lock lock(_mutex);
-                _io_status.update(status);
-                CHECK(_task_queue.empty()); // close task is the last task
-                _has_in_flight_io = false;
-                _promise.set_value(_io_status); // notify
+                CurrentThread::current().set_query_id(_runtime_state->query_id());
+                CurrentThread::current().set_fragment_instance_id(_runtime_state->fragment_instance_id());
+                auto status = _file->close();
+                {
+                    std::scoped_lock lock(_mutex);
+                    _io_status.update(status);
+                    CHECK(_task_queue.empty()); // close task is the last task
+                    _has_in_flight_io = false;
+                    _promise.set_value(_io_status); // notify
+                }
             }
         };
         to_enqueue_tasks.push_back(close_task);
@@ -197,6 +205,9 @@ public:
     };
 
     void enqueue_tasks_and_maybe_submit_task(std::vector<Task> tasks) {
+//        for (auto& t : tasks) {
+//            t();
+//        }
         std::scoped_lock lock(_mutex);
         std::for_each(tasks.begin(), tasks.end(), [&](auto& task) {
             _task_queue.push(task);
