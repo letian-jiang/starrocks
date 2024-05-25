@@ -47,7 +47,9 @@ FileChunkSink::FileChunkSink(std::vector<std::string> partition_columns,
 Status FileChunkSink::init() {
     RETURN_IF_ERROR(ColumnEvaluator::init(_partition_column_evaluators));
     RETURN_IF_ERROR(_file_writer_factory->init());
-    _op_mem_mgr->init(&_writer_stream_pairs, _io_poller, std::bind_front(&FileChunkSink::callback_on_success, this));
+    if (_op_mem_mgr != nullptr) {
+        _op_mem_mgr->init(&_writer_stream_pairs, _io_poller, std::bind_front(&FileChunkSink::callback_on_success, this));
+    }
     return Status::OK();
 }
 
@@ -98,7 +100,6 @@ void FileChunkSink::callback_on_success(const formats::FileWriter::CommitResult&
     if (!result.io_status.ok()) {
         return;
     }
-    LOG(INFO) << "sink num_rows = " << result.file_statistics.record_count;
     _state->update_num_rows_load_sink(result.file_statistics.record_count);
 }
 

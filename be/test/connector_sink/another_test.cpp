@@ -22,6 +22,7 @@
 #include <thread>
 
 #include "connector/connector_chunk_sink.h"
+#include "connector/async_io_poller.h"
 #include "exec/pipeline/fragment_context.h"
 #include "formats/file_writer.h"
 #include "formats/orc/orc_file_writer.h"
@@ -184,7 +185,7 @@ TEST(AsyncFlushTest2, test_orc) {
         std::vector<std::string> column_names = {"a", "b", "c", "d"};
         auto column_evaluators = ColumnSlotIdEvaluator::from_types(type_descs);
 
-        auto factory = formats::CSVFileWriterFactory(fs, TCompressionType::NO_COMPRESSION, {}, column_names, std::move(column_evaluators), &io_executor, &state);
+        auto factory = formats::ORCFileWriterFactory(fs, TCompressionType::NO_COMPRESSION, {}, column_names, std::move(column_evaluators), &io_executor, &state);
         EXPECT_OK(factory.init());
 
         auto maybe_writer_and_stream = factory.createAsync("/dummy_file.parquet");
@@ -248,7 +249,7 @@ TEST(AsyncFlushTest2, test_ptr) {
     // 1000 -> 66624
     // 10'000 -> 667152
     // 100'000 -> 6412464
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 10'000; i++) {
         auto ptr = std::make_shared<SliceChunk>(1024 * 1024);
         auto task = [&, p = std::move(ptr)] () mutable {
             SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(tracker);
@@ -262,6 +263,75 @@ TEST(AsyncFlushTest2, test_ptr) {
     std::this_thread::sleep_for(1s);
     print();
 
+
+    tls_thread_status.set_mem_tracker(prev);
+}
+
+TEST(AsyncFlushTest2, test_orc2) {
+    DCHECK(tls_is_thread_status_init);
+    PriorityThreadPool io_executor("test", 10, 100);
+
+    RuntimeState state;
+    state.init_instance_mem_tracker();
+    auto tracker = state.instance_mem_tracker();
+    auto prev = tls_thread_status.set_mem_tracker(tracker);
+
+    auto print = [&]() {
+        tls_thread_status.mem_tracker_ctx_shift();
+        LOG(INFO) << tracker->debug_string();
+    };
+
+    print();
+
+    {
+        IOStatusPoller poller;
+        auto fs = std::shared_ptr<FileSystem>(new MemoryFileSystem);
+        EXPECT_OK(fs->create_dir("/base_path"));
+        std::vector<TypeDescriptor> type_descs{
+                TypeDescriptor::from_logical_type(TYPE_INT),
+        };
+        std::vector<std::string> column_names = {"a"};
+
+        auto column_evaluators = ColumnSlotIdEvaluator::from_types(type_descs);
+        auto factory = std::unique_ptr<formats::FileWriterFactory>(
+                new formats::ORCFileWriterFactory(fs, TCompressionType::NO_COMPRESSION, {}, column_names,
+                                                  std::move(column_evaluators), &io_executor, &state));
+
+        std::vector<std::string> partition_column_names = {"a"};
+        auto partition_column_evaluators = ColumnSlotIdEvaluator::from_types(type_descs);
+        auto location_provider = std::make_unique<LocationProvider>("/base_path", "ffffff", 0, 0, "parquet");
+        auto sink = FileChunkSink(partition_column_names, std::move(partition_column_evaluators),
+                                                    std::move(location_provider), std::move(factory), 100, &state);
+
+        sink.set_io_poller(&poller);
+
+        EXPECT_OK(sink.init());
+
+        // 32 per round
+        for (int i = 0; i < 1000'0; i++) {
+            auto chunk = std::make_shared<Chunk>();
+            {
+                auto col2 = ColumnHelper::create_column(TypeDescriptor::from_logical_type(TYPE_INT), true);
+                std::vector<int32_t> int32_nums(4096);
+                int32_nums[0] = i;
+                std::ignore = col2->append_numbers(int32_nums.data(), size(int32_nums) * sizeof(int32_t));
+                chunk->append_column(col2, chunk->num_columns());
+            }
+            EXPECT_OK(fs->create_dir("/base_path/a=" + std::to_string(i)));
+            EXPECT_OK(sink.add(chunk));
+        }
+
+        EXPECT_OK(sink.finish());
+        while (1) {
+            auto [status, done] = poller.poll();
+            EXPECT_OK(status);
+            if (done) {
+                break;
+            }
+        }
+    }
+
+    print();
 
     tls_thread_status.set_mem_tracker(prev);
 }

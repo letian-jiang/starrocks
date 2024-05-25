@@ -47,16 +47,16 @@ class Chunk;
 namespace starrocks::formats {
 
 Status ParquetFileWriter::write(ChunkPtr chunk) {
-//    if (_rowgroup_writer == nullptr) {
-//        _rowgroup_writer = std::make_unique<parquet::ChunkWriter>(_writer->AppendBufferedRowGroup(), _type_descs,
-//                                                                  _schema, _eval_func);
-//    }
-//
-//    RETURN_IF_ERROR(_rowgroup_writer->write(chunk.get()));
-//
-//    if (_rowgroup_writer->estimated_buffered_bytes() >= _writer_options->rowgroup_size) {
-//        return _flush_row_group();
-//    }
+    if (_rowgroup_writer == nullptr) {
+        _rowgroup_writer = std::make_unique<parquet::ChunkWriter>(_writer->AppendBufferedRowGroup(), _type_descs,
+                                                                  _schema, _eval_func);
+    }
+
+    RETURN_IF_ERROR(_rowgroup_writer->write(chunk.get()));
+
+    if (_rowgroup_writer->estimated_buffered_bytes() >= _writer_options->rowgroup_size) {
+        return _flush_row_group();
+    }
 
     return Status::OK();
 }
