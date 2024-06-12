@@ -229,6 +229,8 @@ std::string TypeDescriptor::debug_string() const {
         return strings::Substitute("VARCHAR($0)", len);
     case TYPE_VARBINARY:
         return strings::Substitute("VARBINARY($0)", len);
+    case TYPE_BINARY:
+        return strings::Substitute("BINARY($0)", len);
     case TYPE_DECIMAL:
         return strings::Substitute("DECIMAL($0, $1)", precision, scale);
     case TYPE_DECIMALV2:
